@@ -1,0 +1,25 @@
+# Python
+**/__pycache__/
+**/*.pyc
+*.pytest_cache/
+.venv/
+.env
+
+# Backend model artifacts
+classifier/app/model/*.pkl
+
+# macOS
+.DS_Store
+
+# Android/Gradle
+/android/.gradle/
+/android/.idea/
+/android/app/build/
+/android/local.properties
+/android/*.iml
+
+# IDE
+.vscode/
+
+# Misc
+*.log
