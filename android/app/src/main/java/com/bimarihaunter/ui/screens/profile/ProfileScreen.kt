@@ -12,6 +12,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -19,15 +21,24 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.bimarihaunter.ui.components.BimarihaunterButton
 import com.bimarihaunter.ui.components.BimarihaunterTopAppBar
 import com.bimarihaunter.ui.components.StatBox
 import com.bimarihaunter.ui.theme.*
+import com.bimarihaunter.ui.viewmodel.AuthViewModel
 
 @Composable
 fun ProfileScreen(
-    onNavigateToSettings: () -> Unit = {}
+    onNavigateToSettings: () -> Unit = {},
+    authViewModel: AuthViewModel = viewModel()
 ) {
+    val currentUser by authViewModel.currentUser.collectAsState()
+    
+    val displayName = currentUser?.displayName ?: "Bimari Haunter"
+    val subtitleText = currentUser?.phoneNumber ?: currentUser?.email ?: "@anonymous"
+    val initials = displayName.split(" ").take(2).map { it.firstOrNull() ?: "" }.joinToString("").uppercase()
+
     Column(
         modifier = Modifier.fillMaxSize().background(MidnightBlack)
             .verticalScroll(rememberScrollState())
@@ -48,15 +59,15 @@ fun ProfileScreen(
             // Avatar
             Box(Modifier.size(80.dp).clip(CircleShape).background(CharcoalGrey),
                 contentAlignment = Alignment.Center) {
-                Text("TA", color = LimeGreen, fontFamily = SpaceGroteskFamily,
+                Text(initials.ifEmpty { "U" }, color = LimeGreen, fontFamily = SpaceGroteskFamily,
                     fontWeight = FontWeight.Bold, fontSize = 28.sp)
             }
 
             Spacer(Modifier.height(12.dp))
 
-            Text("Taha Bukhari", color = OffWhite, fontFamily = SpaceGroteskFamily,
+            Text(displayName, color = OffWhite, fontFamily = SpaceGroteskFamily,
                 fontWeight = FontWeight.Bold, fontSize = 20.sp)
-            Text("@tahabukhari", color = MediumGrey, fontFamily = InterFamily, fontSize = 14.sp)
+            Text(subtitleText, color = MediumGrey, fontFamily = InterFamily, fontSize = 14.sp)
             Spacer(Modifier.height(4.dp))
             Text("Health tech enthusiast. Building for Pakistan 🇵🇰",
                 color = MediumGrey, fontFamily = InterFamily, fontSize = 13.sp)
@@ -115,7 +126,7 @@ fun ProfileScreen(
             listOf(
                 Triple("Dengue Watch — Lahore", "DW", "24 members"),
                 Triple("Flood Relief Coordination", "FR", "56 members")
-            ).forEach { (name, initials, count) ->
+            ).forEach { (name, initialsVal, count) ->
                 Row(
                     modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
                         .background(CharcoalGrey).padding(12.dp),
@@ -123,7 +134,7 @@ fun ProfileScreen(
                 ) {
                     Box(Modifier.size(40.dp).clip(CircleShape).background(MidnightBlack),
                         contentAlignment = Alignment.Center) {
-                        Text(initials, color = LimeGreen, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Text(initialsVal, color = LimeGreen, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     }
                     Spacer(Modifier.width(12.dp))
                     Column {

@@ -16,6 +16,9 @@ playServicesMaps = "19.0.0"
 retrofit = "2.11.0"
 okhttp = "4.12.0"
 composeGoogleFonts = "1.6.8"
+firebaseBom = "33.7.0"
+playServicesAuth = "21.2.0"
+googleServicesPlugin = "4.4.2"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -55,7 +58,14 @@ okhttp-logging-interceptor = { group = "com.squareup.okhttp3", name = "logging-i
 # Google Fonts
 androidx-compose-google-fonts = { group = "androidx.compose.ui", name = "ui-text-google-fonts", version.ref = "composeGoogleFonts" }
 
+# Firebase & Google Play Services Auth
+firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom" }
+firebase-auth = { group = "com.google.firebase", name = "firebase-auth" }
+firebase-firestore = { group = "com.google.firebase", name = "firebase-firestore" }
+play-services-auth = { group = "com.google.android.gms", name = "play-services-auth", version.ref = "playServicesAuth" }
+
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+google-services = { id = "com.google.gms.google-services", version.ref = "googleServicesPlugin" }

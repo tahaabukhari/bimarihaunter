@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bimarihaunter.R
 import com.bimarihaunter.ui.theme.*
+import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.delay
 
 @Composable
@@ -27,7 +28,7 @@ fun SplashScreen(
     onNavigateToOnboarding: () -> Unit = {},
     onNavigateToHome: () -> Unit = {}
 ) {
-    val isFirstLaunch = true // TODO: Check SharedPreferences
+    val isLoggedIn = FirebaseAuth.getInstance().currentUser != null
 
     // Fade-in animation
     val infiniteTransition = rememberInfiniteTransition(label = "splash")
@@ -43,7 +44,7 @@ fun SplashScreen(
 
     LaunchedEffect(Unit) {
         delay(2000)
-        if (isFirstLaunch) onNavigateToOnboarding() else onNavigateToHome()
+        if (isLoggedIn) onNavigateToHome() else onNavigateToOnboarding()
     }
 
     Box(

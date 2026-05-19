@@ -21,35 +21,29 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.bimarihaunter.R
 import com.bimarihaunter.ui.components.*
 import com.bimarihaunter.ui.theme.*
-
-data class ChatItem(
-    val id: String, val name: String, val initials: String,
-    val lastMessage: String, val timestamp: String, val unreadCount: Int = 0
-)
-
-private val mockChats = listOf(
-    ChatItem("1", "Dengue Watch — Lahore", "DW",
-        "Ahmad: Has anyone seen fumigation in Gulberg?", "2m ago", 3),
-    ChatItem("2", "Flood Relief Coordination", "FR",
-        "Sana: We need more volunteers at the camp", "15m ago", 1),
-    ChatItem("3", "Karachi Health Workers", "KH",
-        "Dr. Fatima: New cases reported in Korangi", "1h ago", 0),
-    ChatItem("4", "COVID Updates Pakistan", "CU",
-        "Ali: WHO released new guidelines today", "3h ago", 0),
-    ChatItem("5", "Peshawar Water Crisis", "PW",
-        "Imran: Water testing results are out", "5h ago", 2),
-)
+import com.bimarihaunter.ui.viewmodel.ChatViewModel
 
 @Composable
 fun ChatListScreen(
     onNavigateToGroupChat: (String) -> Unit = {},
     onNavigateToAiChat: () -> Unit = {},
-    onNavigateToCreateGroup: () -> Unit = {}
+    onNavigateToCreateGroup: () -> Unit = {},
+    chatViewModel: ChatViewModel = viewModel()
 ) {
     var selectedChip by remember { mutableStateOf("All") }
+    val chatGroups by chatViewModel.chatGroups.collectAsState()
+
+    val filteredGroups = remember(chatGroups, selectedChip) {
+        if (selectedChip == "All") {
+            chatGroups
+        } else {
+            chatGroups.filter { it.category.equals(selectedChip, ignoreCase = true) }
+        }
+    }
 
     Box(modifier = Modifier.fillMaxSize().background(MidnightBlack)) {
         Column {
@@ -63,7 +57,7 @@ fun ChatListScreen(
             )
 
             FilterChipRow(
-                chips = listOf("All", "Groups", "Direct"),
+                chips = listOf("All", "Health", "Crisis", "General"),
                 selectedChip = selectedChip,
                 onChipSelected = { selectedChip = it },
                 modifier = Modifier.padding(horizontal = 20.dp)
@@ -109,7 +103,7 @@ fun ChatListScreen(
                 }
 
                 // Chat list
-                items(mockChats) { chat ->
+                items(filteredGroups) { chat ->
                     Row(
                         modifier = Modifier.fillMaxWidth()
                             .clip(RoundedCornerShape(12.dp))
@@ -120,7 +114,8 @@ fun ChatListScreen(
                         // Avatar
                         Box(Modifier.size(48.dp).clip(CircleShape).background(CharcoalGrey),
                             contentAlignment = Alignment.Center) {
-                            Text(chat.initials, color = OffWhite, fontWeight = FontWeight.Bold,
+                            val initials = chat.name.split(" ").take(2).map { it.firstOrNull() ?: "" }.joinToString("").uppercase()
+                            Text(initials.ifEmpty { "G" }, color = OffWhite, fontWeight = FontWeight.Bold,
                                 fontSize = 16.sp)
                         }
                         Spacer(Modifier.width(12.dp))
@@ -129,23 +124,13 @@ fun ChatListScreen(
                                 fontWeight = FontWeight.SemiBold, fontSize = 15.sp,
                                 maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Spacer(Modifier.height(2.dp))
-                            Text(chat.lastMessage, color = MediumGrey, fontSize = 13.sp,
+                            Text(chat.lastMessage.ifEmpty { "No messages yet" }, color = MediumGrey, fontSize = 13.sp,
                                 fontFamily = InterFamily, maxLines = 1,
                                 overflow = TextOverflow.Ellipsis)
                         }
                         Spacer(Modifier.width(8.dp))
-                        Column(horizontalAlignment = Alignment.End) {
-                            Text(chat.timestamp, color = MediumGrey, fontSize = 11.sp,
+                            Text(chat.lastMessageTime.ifEmpty { "Just now" }, color = MediumGrey, fontSize = 11.sp,
                                 fontFamily = InterFamily)
-                            if (chat.unreadCount > 0) {
-                                Spacer(Modifier.height(4.dp))
-                                Box(Modifier.size(20.dp).clip(CircleShape).background(LimeGreen),
-                                    contentAlignment = Alignment.Center) {
-                                    Text("${chat.unreadCount}", color = MidnightBlack,
-                                        fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                        }
                     }
                 }
 

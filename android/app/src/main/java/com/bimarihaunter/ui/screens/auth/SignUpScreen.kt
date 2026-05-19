@@ -1,11 +1,14 @@
 package com.bimarihaunter.ui.screens.auth
 
+import android.app.Activity
+import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -14,50 +17,67 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.bimarihaunter.R
 import com.bimarihaunter.ui.components.BimarihaunterButton
 import com.bimarihaunter.ui.theme.*
+import com.bimarihaunter.ui.viewmodel.AuthState
+import com.bimarihaunter.ui.viewmodel.AuthViewModel
 
 @Composable
 fun SignUpScreen(
     onNavigateToLogin: () -> Unit = {},
     onNavigateBack: () -> Unit = {},
-    onCreateAccount: () -> Unit = {}
+    onCreateAccount: () -> Unit = {},
+    authViewModel: AuthViewModel = viewModel()
 ) {
+    val context = LocalContext.current
+    val activity = context as? Activity
+    val authState by authViewModel.authState.collectAsState()
+    val currentUser by authViewModel.currentUser.collectAsState()
+
     var fullName by remember { mutableStateOf("") }
-    var email by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var confirmPassword by remember { mutableStateOf("") }
-    var passwordVisible by remember { mutableStateOf(false) }
-    var confirmVisible by remember { mutableStateOf(false) }
+    var phoneNumber by remember { mutableStateOf("") }
     var agreedToTerms by remember { mutableStateOf(false) }
 
-    val passwordStrength = when {
-        password.length >= 12 -> 1f
-        password.length >= 8 -> 0.66f
-        password.length >= 4 -> 0.33f
-        else -> 0f
+    var otpCode by remember { mutableStateOf("") }
+    var showOtpDialog by remember { mutableStateOf(false) }
+
+    // Redirect on success
+    LaunchedEffect(currentUser) {
+        if (currentUser != null) {
+            onCreateAccount()
+        }
     }
-    val strengthLabel = when {
-        password.isEmpty() -> ""
-        passwordStrength >= 1f -> "Strong"
-        passwordStrength >= 0.66f -> "Good strength"
-        passwordStrength >= 0.33f -> "Weak"
-        else -> "Too short"
-    }
-    val strengthColor = when {
-        passwordStrength >= 0.66f -> LimeGreen
-        passwordStrength >= 0.33f -> GoldWarning
-        else -> EmberRed
+
+    // Handle AuthState transitions
+    LaunchedEffect(authState) {
+        when (authState) {
+            is AuthState.OtpSent -> {
+                showOtpDialog = true
+            }
+            is AuthState.Success -> {
+                showOtpDialog = false
+                Toast.makeText(context, "Account created successfully!", Toast.LENGTH_SHORT).show()
+                onCreateAccount()
+            }
+            is AuthState.Error -> {
+                showOtpDialog = false
+                Toast.makeText(context, (authState as AuthState.Error).message, Toast.LENGTH_LONG).show()
+                authViewModel.resetState()
+            }
+            else -> {}
+        }
     }
 
     Column(
@@ -111,83 +131,21 @@ fun SignUpScreen(
 
         Spacer(modifier = Modifier.height(14.dp))
 
-        // Email
+        // Phone Number
         OutlinedTextField(
-            value = email, onValueChange = { email = it },
-            placeholder = { Text("Email Address", color = MediumGrey) },
-            leadingIcon = { Icon(Icons.Default.Email, null, tint = MediumGrey) },
+            value = phoneNumber, onValueChange = { phoneNumber = it },
+            placeholder = { Text("Phone Number (+923001234567)", color = MediumGrey) },
+            leadingIcon = { Icon(Icons.Default.Phone, null, tint = MediumGrey) },
             modifier = Modifier.fillMaxWidth().height(56.dp),
             shape = RoundedCornerShape(14.dp),
             colors = OutlinedTextFieldDefaults.colors(
                 unfocusedContainerColor = CharcoalGrey, focusedContainerColor = CharcoalGrey,
                 unfocusedBorderColor = CharcoalGrey, focusedBorderColor = LimeGreen,
                 cursorColor = LimeGreen, focusedTextColor = OffWhite, unfocusedTextColor = OffWhite
-            ), singleLine = true
+            ),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+            singleLine = true
         )
-
-        Spacer(modifier = Modifier.height(14.dp))
-
-        // Password
-        OutlinedTextField(
-            value = password, onValueChange = { password = it },
-            placeholder = { Text("Password", color = MediumGrey) },
-            leadingIcon = { Icon(Icons.Default.Lock, null, tint = MediumGrey) },
-            trailingIcon = {
-                IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                    Icon(if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                        "Toggle", tint = MediumGrey)
-                }
-            },
-            visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-            modifier = Modifier.fillMaxWidth().height(56.dp),
-            shape = RoundedCornerShape(14.dp),
-            colors = OutlinedTextFieldDefaults.colors(
-                unfocusedContainerColor = CharcoalGrey, focusedContainerColor = CharcoalGrey,
-                unfocusedBorderColor = CharcoalGrey, focusedBorderColor = LimeGreen,
-                cursorColor = LimeGreen, focusedTextColor = OffWhite, unfocusedTextColor = OffWhite
-            ), singleLine = true
-        )
-
-        Spacer(modifier = Modifier.height(14.dp))
-
-        // Confirm Password
-        OutlinedTextField(
-            value = confirmPassword, onValueChange = { confirmPassword = it },
-            placeholder = { Text("Confirm Password", color = MediumGrey) },
-            leadingIcon = { Icon(Icons.Default.Lock, null, tint = MediumGrey) },
-            trailingIcon = {
-                IconButton(onClick = { confirmVisible = !confirmVisible }) {
-                    Icon(if (confirmVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                        "Toggle", tint = MediumGrey)
-                }
-            },
-            visualTransformation = if (confirmVisible) VisualTransformation.None else PasswordVisualTransformation(),
-            modifier = Modifier.fillMaxWidth().height(56.dp),
-            shape = RoundedCornerShape(14.dp),
-            colors = OutlinedTextFieldDefaults.colors(
-                unfocusedContainerColor = CharcoalGrey, focusedContainerColor = CharcoalGrey,
-                unfocusedBorderColor = CharcoalGrey, focusedBorderColor = LimeGreen,
-                cursorColor = LimeGreen, focusedTextColor = OffWhite, unfocusedTextColor = OffWhite
-            ), singleLine = true
-        )
-
-        // Password strength bar
-        if (password.isNotEmpty()) {
-            Spacer(modifier = Modifier.height(10.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                repeat(3) { i ->
-                    Box(
-                        Modifier.weight(1f).height(4.dp).background(
-                            if (i < (passwordStrength * 3).toInt()) strengthColor
-                            else MediumGrey.copy(alpha = 0.3f),
-                            RoundedCornerShape(2.dp)
-                        )
-                    )
-                }
-            }
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(strengthLabel, color = strengthColor, fontSize = 12.sp, fontFamily = InterFamily)
-        }
 
         Spacer(modifier = Modifier.height(20.dp))
 
@@ -213,8 +171,17 @@ fun SignUpScreen(
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        BimarihaunterButton(text = "Create Account", onClick = onCreateAccount,
-            enabled = agreedToTerms && email.isNotBlank() && password.isNotBlank())
+        BimarihaunterButton(
+            text = if (authState is AuthState.Loading) "Verifying..." else "Verify Phone & Sign Up",
+            onClick = {
+                if (phoneNumber.isNotBlank() && fullName.isNotBlank() && activity != null) {
+                    authViewModel.sendVerificationCode(phoneNumber.trim(), activity)
+                } else {
+                    Toast.makeText(context, "Please fill in all fields", Toast.LENGTH_SHORT).show()
+                }
+            },
+            enabled = agreedToTerms && phoneNumber.isNotBlank() && fullName.isNotBlank() && authState !is AuthState.Loading
+        )
 
         Spacer(modifier = Modifier.height(20.dp))
 
@@ -225,5 +192,63 @@ fun SignUpScreen(
         }
 
         Spacer(modifier = Modifier.height(16.dp))
+    }
+
+    // OTP Code Verification Dialog for Sign Up
+    if (showOtpDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showOtpDialog = false
+                authViewModel.resetState()
+            },
+            title = {
+                Text("Enter OTP Code", color = OffWhite, fontFamily = SpaceGroteskFamily)
+            },
+            text = {
+                Column {
+                    Text("We've sent a 6-digit verification code to $phoneNumber", color = MediumGrey, fontFamily = InterFamily)
+                    Spacer(Modifier.height(16.dp))
+                    OutlinedTextField(
+                        value = otpCode,
+                        onValueChange = { if (it.length <= 6) otpCode = it },
+                        placeholder = { Text("6-digit code", color = MediumGrey) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            unfocusedContainerColor = MidnightBlack,
+                            focusedContainerColor = MidnightBlack,
+                            unfocusedBorderColor = CharcoalGrey,
+                            focusedBorderColor = LimeGreen,
+                            focusedTextColor = OffWhite,
+                            unfocusedTextColor = OffWhite
+                        ),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (otpCode.length == 6) {
+                            authViewModel.verifyOtp(otpCode)
+                        } else {
+                            Toast.makeText(context, "Enter standard 6-digit code", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                ) {
+                    Text("Verify", color = LimeGreen, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showOtpDialog = false
+                    authViewModel.resetState()
+                }) {
+                    Text("Cancel", color = MediumGrey)
+                }
+            },
+            containerColor = CharcoalGrey
+        )
     }
 }

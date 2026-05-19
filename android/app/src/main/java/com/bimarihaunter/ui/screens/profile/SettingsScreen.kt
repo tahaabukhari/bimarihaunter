@@ -1,6 +1,7 @@
 package com.bimarihaunter.ui.screens.profile
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -17,13 +18,16 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.bimarihaunter.ui.components.BimarihaunterTopAppBar
 import com.bimarihaunter.ui.theme.*
+import com.bimarihaunter.ui.viewmodel.AuthViewModel
 
 @Composable
 fun SettingsScreen(
     onNavigateBack: () -> Unit = {},
-    onLogout: () -> Unit = {}
+    onLogout: () -> Unit = {},
+    authViewModel: AuthViewModel = viewModel()
 ) {
     var pushNotifications by remember { mutableStateOf(true) }
     var criticalAlerts by remember { mutableStateOf(true) }
@@ -78,7 +82,13 @@ fun SettingsScreen(
                 SettingsChevronRow(Icons.Default.Person, "Edit Profile", "")
                 SettingsDivider()
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 14.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            authViewModel.signOut()
+                            onLogout()
+                        }
+                        .padding(vertical = 14.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(Icons.AutoMirrored.Filled.Logout, null, tint = EmberRed,

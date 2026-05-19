@@ -23,40 +23,31 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.bimarihaunter.data.model.NewsArticle
 import com.bimarihaunter.ui.components.*
 import com.bimarihaunter.ui.theme.*
-
-private val mockNews = listOf(
-    NewsCardData("1", "Outbreak", "Dawn News", "2h ago",
-        "Dengue Cases Surge in Lahore's Urban Centers",
-        "Health authorities report over 340 new cases in the past week across multiple districts.",
-        "Lahore, Punjab"),
-    NewsCardData("2", "Disaster", "Geo News", "4h ago",
-        "Flood Warning Issued for Southern Sindh",
-        "Pakistan Meteorological Department warns of heavy rainfall and potential flooding.",
-        "Hyderabad, Sindh"),
-    NewsCardData("3", "Research", "The News", "6h ago",
-        "New Malaria Vaccine Trial Begins in Pakistan",
-        "WHO-backed clinical trials commence at major hospitals in Islamabad and Rawalpindi.",
-        "Islamabad"),
-    NewsCardData("4", "Local", "Express Tribune", "8h ago",
-        "Water Contamination Alert in Peshawar",
-        "Multiple localities report contaminated water supply leading to gastroenteritis cases.",
-        "Peshawar, KPK"),
-    NewsCardData("5", "Pharmacy", "ARY News", "12h ago",
-        "Essential Medicine Prices Rise by 15% Nationwide",
-        "Pharmaceutical companies cite raw material cost increase as primary factor.",
-        "Karachi, Sindh"),
-)
+import com.bimarihaunter.ui.viewmodel.HomeViewModel
 
 @Composable
 fun HomeFeedScreen(
     onNavigateToArticle: (String) -> Unit = {},
     onNavigateToSearch: () -> Unit = {},
-    onNavigateToAlerts: () -> Unit = {}
+    onNavigateToAlerts: () -> Unit = {},
+    homeViewModel: HomeViewModel = viewModel()
 ) {
     var selectedChip by remember { mutableStateOf("All") }
     val chips = listOf("All", "Outbreaks", "Disasters", "Research", "Local", "Pharmacy")
+    
+    val articles by homeViewModel.newsArticles.collectAsState()
+    
+    val filteredArticles = remember(articles, selectedChip) {
+        if (selectedChip == "All") {
+            articles
+        } else {
+            articles.filter { it.category.equals(selectedChip, ignoreCase = true) }
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -88,7 +79,7 @@ fun HomeFeedScreen(
                 Modifier.size(32.dp).clip(CircleShape).background(CharcoalGrey),
                 contentAlignment = Alignment.Center
             ) {
-                Text("TA", color = LimeGreen, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Text("US", color = LimeGreen, fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
         }
 
@@ -127,34 +118,49 @@ fun HomeFeedScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             // Breaking news banner
-            item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(CharcoalGrey)
-                ) {
-                    Box(Modifier.width(4.dp).height(80.dp).background(LimeGreen))
-                    Column(Modifier.padding(16.dp)) {
-                        Text("BREAKING", color = LimeGreen, fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold, fontFamily = InterFamily,
-                            modifier = Modifier.clip(RoundedCornerShape(4.dp))
-                                .background(LimeGreen.copy(alpha = 0.15f))
-                                .padding(horizontal = 6.dp, vertical = 2.dp))
-                        Spacer(Modifier.height(6.dp))
-                        Text("Cholera outbreak confirmed in flood-affected Sindh areas",
-                            color = OffWhite, fontFamily = SpaceGroteskFamily,
-                            fontWeight = FontWeight.SemiBold, fontSize = 14.sp,
-                            maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        Spacer(Modifier.height(4.dp))
-                        Text("12 min ago", color = MediumGrey, fontSize = 11.sp)
+            val criticalArticle = articles.firstOrNull { it.severity == "CRITICAL" }
+            if (criticalArticle != null) {
+                item {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(CharcoalGrey)
+                            .clickable { onNavigateToArticle(criticalArticle.id) }
+                    ) {
+                        Box(Modifier.width(4.dp).height(80.dp).background(LimeGreen))
+                        Column(Modifier.padding(16.dp)) {
+                            Text("BREAKING", color = LimeGreen, fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold, fontFamily = InterFamily,
+                                modifier = Modifier.clip(RoundedCornerShape(4.dp))
+                                    .background(LimeGreen.copy(alpha = 0.15f))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp))
+                            Spacer(Modifier.height(6.dp))
+                            Text(criticalArticle.title,
+                                color = OffWhite, fontFamily = SpaceGroteskFamily,
+                                fontWeight = FontWeight.SemiBold, fontSize = 14.sp,
+                                maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            Spacer(Modifier.height(4.dp))
+                            Text(criticalArticle.timestamp, color = MediumGrey, fontSize = 11.sp)
+                        }
                     }
                 }
             }
 
             // News cards
-            items(mockNews) { news ->
-                NewsCard(data = news, onClick = { onNavigateToArticle(news.id) })
+            items(filteredArticles) { news ->
+                NewsCard(
+                    data = NewsCardData(
+                        id = news.id,
+                        category = news.category,
+                        source = news.source,
+                        timestamp = news.timestamp,
+                        headline = news.title,
+                        snippet = news.content,
+                        location = news.location
+                    ),
+                    onClick = { onNavigateToArticle(news.id) }
+                )
             }
 
             item { Spacer(Modifier.height(8.dp)) }

@@ -19,43 +19,39 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.bimarihaunter.ui.components.BimarihaunterTopAppBar
 import com.bimarihaunter.ui.components.ChatBubble
 import com.bimarihaunter.ui.theme.*
-
-data class ChatMessage(
-    val id: String, val sender: String, val message: String,
-    val timestamp: String, val isOutgoing: Boolean, val isSystem: Boolean = false
-)
-
-private val mockMessages = listOf(
-    ChatMessage("1", "Ahmad", "Has anyone seen fumigation drives in Gulberg area?",
-        "10:30 AM", false),
-    ChatMessage("2", "You", "Yes, I saw a team near MM Alam Road this morning",
-        "10:32 AM", true),
-    ChatMessage("3", "Sana", "My neighbor got dengue last week. Be careful everyone!",
-        "10:35 AM", false),
-    ChatMessage("4", "Dr. Fatima", "Please make sure to wear full sleeves and use repellent. Cases are rising rapidly in Model Town area.",
-        "10:38 AM", false),
-    ChatMessage("5", "You", "Thanks Dr. Fatima. Any specific repellent brand you recommend?",
-        "10:40 AM", true),
-    ChatMessage("6", "System", "Ahmad shared a news article",
-        "10:42 AM", false, true),
-    ChatMessage("7", "Imran", "I've reported standing water near my building to the health department",
-        "10:45 AM", false),
-)
+import com.bimarihaunter.ui.viewmodel.ChatViewModel
+import com.google.firebase.auth.FirebaseAuth
 
 @Composable
 fun GroupChatScreen(
     groupId: String? = null,
-    onNavigateBack: () -> Unit = {}
+    onNavigateBack: () -> Unit = {},
+    chatViewModel: ChatViewModel = viewModel()
 ) {
     var messageText by remember { mutableStateOf("") }
+    
+    val currentUserId = remember { FirebaseAuth.getInstance().currentUser?.uid ?: "" }
+    val chatGroups by chatViewModel.chatGroups.collectAsState()
+    val messages by chatViewModel.messages.collectAsState()
+    
+    val currentGroup = remember(chatGroups, groupId) {
+        chatGroups.find { it.id == groupId }
+    }
+
+    LaunchedEffect(groupId) {
+        if (groupId != null) {
+            chatViewModel.loadMessages(groupId)
+        }
+    }
 
     Column(modifier = Modifier.fillMaxSize().background(MidnightBlack).navigationBarsPadding()) {
         // Top bar
         BimarihaunterTopAppBar(
-            title = "Dengue Watch — Lahore",
+            title = currentGroup?.name ?: "Community Chat",
             showBackArrow = true,
             onBackClick = onNavigateBack,
             actions = {
@@ -69,7 +65,7 @@ fun GroupChatScreen(
         )
 
         // Subtitle
-        Text("24 members", color = MediumGrey, fontSize = 12.sp, fontFamily = InterFamily,
+        Text("Active discussion group", color = MediumGrey, fontSize = 12.sp, fontFamily = InterFamily,
             modifier = Modifier.padding(start = 56.dp, top = 0.dp, bottom = 8.dp))
 
         // Messages
@@ -79,28 +75,21 @@ fun GroupChatScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
             contentPadding = PaddingValues(vertical = 8.dp)
         ) {
-            items(mockMessages.reversed()) { msg ->
-                if (msg.isSystem) {
-                    // System message
-                    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(msg.message, color = MediumGrey, fontSize = 12.sp,
-                            fontFamily = InterFamily)
-                        Spacer(Modifier.height(6.dp))
-                        Row(Modifier.clip(RoundedCornerShape(12.dp)).background(CharcoalGrey)
-                            .padding(12.dp)) {
-                            Text("Punjab Govt Activates Emergency Response for Dengue",
-                                color = OffWhite, fontSize = 13.sp, fontFamily = InterFamily)
-                        }
-                    }
-                } else {
-                    ChatBubble(
-                        message = msg.message,
-                        isOutgoing = msg.isOutgoing,
-                        senderName = if (!msg.isOutgoing) msg.sender else null,
-                        timestamp = msg.timestamp,
-                        showAvatar = !msg.isOutgoing
-                    )
-                }
+            items(messages.sortedByDescending { it.timestamp }) { msg ->
+                val isOutgoing = msg.senderId == currentUserId
+                val formattedTime = if (msg.timestamp > 0) {
+                    val date = java.util.Date(msg.timestamp)
+                    val format = java.text.SimpleDateFormat("hh:mm a", java.util.Locale.getDefault())
+                    format.format(date)
+                } else ""
+
+                ChatBubble(
+                    message = msg.text,
+                    isOutgoing = isOutgoing,
+                    senderName = if (!isOutgoing) msg.senderName else null,
+                    timestamp = formattedTime,
+                    showAvatar = !isOutgoing
+                )
             }
         }
 
@@ -131,7 +120,12 @@ fun GroupChatScreen(
                 singleLine = true
             )
             IconButton(
-                onClick = { messageText = "" },
+                onClick = {
+                    if (messageText.isNotBlank() && groupId != null) {
+                        chatViewModel.sendMessage(groupId, messageText.trim())
+                        messageText = ""
+                    }
+                },
                 modifier = Modifier.size(40.dp).clip(CircleShape).background(LimeGreen)
             ) {
                 Icon(Icons.Default.Send, "Send", tint = MidnightBlack, modifier = Modifier.size(20.dp))

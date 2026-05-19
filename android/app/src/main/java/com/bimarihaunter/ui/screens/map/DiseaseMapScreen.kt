@@ -19,31 +19,30 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.bimarihaunter.data.model.OutbreakPoint
 import com.bimarihaunter.ui.components.FilterChipRow
 import com.bimarihaunter.ui.theme.*
-
-data class OutbreakSummary(
-    val id: String,
-    val disease: String,
-    val location: String,
-    val severity: String
-)
-
-private val mockOutbreaks = listOf(
-    OutbreakSummary("1", "Dengue", "Lahore", "Critical"),
-    OutbreakSummary("2", "Malaria", "Karachi", "High"),
-    OutbreakSummary("3", "Cholera", "Hyderabad", "Medium"),
-    OutbreakSummary("4", "COVID-19", "Islamabad", "Low"),
-    OutbreakSummary("5", "Typhoid", "Peshawar", "High"),
-)
+import com.bimarihaunter.ui.viewmodel.MapViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DiseaseMapScreen(
-    onNavigateToDetail: (String) -> Unit = {}
+    onNavigateToDetail: (String) -> Unit = {},
+    mapViewModel: MapViewModel = viewModel()
 ) {
-    var selectedFilter by remember { mutableStateOf("Disease") }
+    var selectedFilter by remember { mutableStateOf("All") }
     val sheetState = rememberBottomSheetScaffoldState()
+    
+    val outbreaks by mapViewModel.outbreaks.collectAsState()
+    
+    val filteredOutbreaks = remember(outbreaks, selectedFilter) {
+        if (selectedFilter == "All") {
+            outbreaks
+        } else {
+            outbreaks.filter { it.name.contains(selectedFilter, ignoreCase = true) }
+        }
+    }
 
     BottomSheetScaffold(
         scaffoldState = sheetState,
@@ -64,7 +63,7 @@ fun DiseaseMapScreen(
                     fontWeight = FontWeight.Bold, fontSize = 18.sp)
                 Spacer(Modifier.height(12.dp))
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    items(mockOutbreaks) { outbreak ->
+                    items(filteredOutbreaks) { outbreak ->
                         Column(
                             modifier = Modifier.width(140.dp)
                                 .clip(RoundedCornerShape(12.dp))
@@ -75,10 +74,10 @@ fun DiseaseMapScreen(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Box(Modifier.size(8.dp).clip(CircleShape).background(
                                     when (outbreak.severity) {
-                                        "Critical" -> EmberRed
-                                        "High" -> GoldWarning
-                                        "Medium" -> TealInfo
-                                        else -> MediumGrey
+                                        "CRITICAL" -> EmberRed
+                                        "HIGH" -> GoldWarning
+                                        "MEDIUM" -> TealInfo
+                                        else -> LimeGreen
                                     }
                                 ))
                                 Spacer(Modifier.width(6.dp))
@@ -86,10 +85,10 @@ fun DiseaseMapScreen(
                                     fontFamily = InterFamily)
                             }
                             Spacer(Modifier.height(6.dp))
-                            Text(outbreak.disease, color = OffWhite, fontFamily = SpaceGroteskFamily,
-                                fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                            Text(outbreak.location, color = MediumGrey, fontSize = 12.sp,
-                                fontFamily = InterFamily)
+                            Text(outbreak.name.substringBefore("—").trim(), color = OffWhite, fontFamily = SpaceGroteskFamily,
+                                fontWeight = FontWeight.SemiBold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(outbreak.name.substringAfter("—", "Pakistan").trim(), color = MediumGrey, fontSize = 12.sp,
+                                fontFamily = InterFamily, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                     }
                 }
@@ -105,15 +104,10 @@ fun DiseaseMapScreen(
                 androidx.compose.ui.graphics.Color(0xFF1A1A2E)
             ))
 
-            // Simulated map markers
-            val markers = listOf(
-                Triple("Lahore", 0.35f, 0.28f),
-                Triple("Karachi", 0.22f, 0.72f),
-                Triple("Islamabad", 0.45f, 0.20f),
-                Triple("Peshawar", 0.30f, 0.15f),
-                Triple("Quetta", 0.12f, 0.40f),
-            )
-            markers.forEach { (name, x, y) ->
+            // Simulated map markers based on real database entries
+            filteredOutbreaks.forEachIndexed { index, outbreak ->
+                val simulatedX = 0.15f + (index * 0.25f) % 0.7f
+                val simulatedY = 0.2f + (index * 0.35f) % 0.6f
                 Column(
                     modifier = Modifier.fillMaxSize(),
                     horizontalAlignment = Alignment.CenterHorizontally
@@ -121,15 +115,28 @@ fun DiseaseMapScreen(
                     Box(
                         modifier = Modifier
                             .offset(
-                                x = (x * 300).dp,
-                                y = (y * 500).dp
+                                x = (simulatedX * 300).dp,
+                                y = (simulatedY * 500).dp
                             )
+                            .clickable { onNavigateToDetail(outbreak.id) }
                     ) {
                         // Glowing dot
                         Box(Modifier.size(24.dp).clip(CircleShape)
-                            .background(LimeGreen.copy(alpha = 0.2f)),
+                            .background(
+                                when (outbreak.severity) {
+                                    "CRITICAL" -> EmberRed.copy(alpha = 0.2f)
+                                    "HIGH" -> GoldWarning.copy(alpha = 0.2f)
+                                    else -> LimeGreen.copy(alpha = 0.2f)
+                                },
+                            ),
                             contentAlignment = Alignment.Center) {
-                            Box(Modifier.size(10.dp).clip(CircleShape).background(LimeGreen))
+                            Box(Modifier.size(10.dp).clip(CircleShape).background(
+                                when (outbreak.severity) {
+                                    "CRITICAL" -> EmberRed
+                                    "HIGH" -> GoldWarning
+                                    else -> LimeGreen
+                                }
+                            ))
                         }
                     }
                 }
@@ -158,7 +165,7 @@ fun DiseaseMapScreen(
                 .padding(start = 20.dp, top = 64.dp)
                 .align(Alignment.TopStart)) {
                 FilterChipRow(
-                    chips = listOf("Disease", "Disaster", "All"),
+                    chips = listOf("All", "Dengue", "Cholera"),
                     selectedChip = selectedFilter,
                     onChipSelected = { selectedFilter = it }
                 )

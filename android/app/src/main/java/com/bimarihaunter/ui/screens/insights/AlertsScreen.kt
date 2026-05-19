@@ -10,35 +10,27 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.bimarihaunter.data.model.AlertData
 import com.bimarihaunter.ui.components.*
 import com.bimarihaunter.ui.theme.*
-
-private val mockAlerts = listOf(
-    AlertCardData("1", AlertSeverity.CRITICAL, "Dengue Outbreak — Lahore",
-        "340+ cases reported in urban centers. Emergency response activated.",
-        "12 min ago", false),
-    AlertCardData("2", AlertSeverity.WARNING, "Flood Warning — Southern Sindh",
-        "Heavy rainfall expected. Evacuation advisories issued for low-lying areas.",
-        "1h ago", false),
-    AlertCardData("3", AlertSeverity.INFO, "COVID-19 Booster Available",
-        "Free booster doses now available at all government hospitals.",
-        "3h ago", true),
-    AlertCardData("4", AlertSeverity.CRITICAL, "Water Contamination — Peshawar",
-        "Multiple areas report unsafe drinking water. Boil water advisory in effect.",
-        "5h ago", false),
-    AlertCardData("5", AlertSeverity.WARNING, "Heatwave Alert — Karachi",
-        "Temperatures expected to exceed 45°C this week.",
-        "8h ago", true),
-    AlertCardData("6", AlertSeverity.INFO, "New Malaria Vaccine Trial",
-        "WHO-backed clinical trials begin at major hospitals in Islamabad.",
-        "12h ago", true),
-)
+import com.bimarihaunter.ui.viewmodel.AlertsViewModel
 
 @Composable
 fun AlertsScreen(
-    onNavigateBack: () -> Unit = {}
+    onNavigateBack: () -> Unit = {},
+    alertsViewModel: AlertsViewModel = viewModel()
 ) {
     var selectedChip by remember { mutableStateOf("All") }
+    val alertsList by alertsViewModel.alerts.collectAsState()
+
+    val filteredAlerts = remember(alertsList, selectedChip) {
+        if (selectedChip == "All") {
+            alertsList
+        } else {
+            alertsList.filter { it.severity.equals(selectedChip, ignoreCase = true) }
+        }
+    }
 
     Column(modifier = Modifier.fillMaxSize().background(MidnightBlack).navigationBarsPadding()) {
         BimarihaunterTopAppBar(
@@ -54,7 +46,7 @@ fun AlertsScreen(
         )
 
         FilterChipRow(
-            chips = listOf("All", "Health", "Disaster", "Pharmacy"),
+            chips = listOf("All", "CRITICAL", "WARNING", "INFO"),
             selectedChip = selectedChip,
             onChipSelected = { selectedChip = it },
             modifier = Modifier.padding(horizontal = 20.dp)
@@ -66,8 +58,21 @@ fun AlertsScreen(
             contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            items(mockAlerts) { alert ->
-                AlertCard(data = alert)
+            items(filteredAlerts) { alert ->
+                AlertCard(
+                    data = AlertCardData(
+                        id = alert.id,
+                        severity = when (alert.severity) {
+                            "CRITICAL" -> AlertSeverity.CRITICAL
+                            "WARNING" -> AlertSeverity.WARNING
+                            else -> AlertSeverity.INFO
+                        },
+                        heading = alert.title,
+                        subtitle = alert.description,
+                        timestamp = alert.timestamp,
+                        isRead = alert.read
+                    )
+                )
             }
             item { Spacer(Modifier.height(8.dp)) }
         }

@@ -14,6 +14,8 @@ import androidx.compose.material.icons.outlined.Bookmark
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -21,14 +23,20 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.bimarihaunter.ui.theme.*
+import com.bimarihaunter.ui.viewmodel.HomeViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ArticleDetailScreen(
     articleId: String? = null,
-    onNavigateBack: () -> Unit = {}
+    onNavigateBack: () -> Unit = {},
+    homeViewModel: HomeViewModel = viewModel()
 ) {
+    val articles by homeViewModel.newsArticles.collectAsState()
+    val article = articles.find { it.id == articleId }
+
     Column(
         modifier = Modifier.fillMaxSize().background(MidnightBlack)
             .statusBarsPadding()
@@ -66,71 +74,95 @@ fun ArticleDetailScreen(
         Column(modifier = Modifier.padding(horizontal = 20.dp)) {
             Spacer(Modifier.height(16.dp))
 
-            // Category + Source + Timestamp
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Outbreak", color = MidnightBlack, fontSize = 10.sp,
-                    fontWeight = FontWeight.Medium, fontFamily = InterFamily,
-                    modifier = Modifier.clip(RoundedCornerShape(50.dp))
-                        .background(LimeGreen).padding(horizontal = 10.dp, vertical = 3.dp))
-                Spacer(Modifier.width(8.dp))
-                Text("Dawn News", color = MediumGrey, fontSize = 12.sp, fontFamily = InterFamily)
-                Spacer(Modifier.width(8.dp))
-                Text("2h ago", color = MediumGrey, fontSize = 12.sp, fontFamily = InterFamily)
-            }
-
-            Spacer(Modifier.height(12.dp))
-
-            // Headline
-            Text("Dengue Cases Surge in Lahore's Urban Centers as Monsoon Season Intensifies",
-                color = OffWhite, fontFamily = SpaceGroteskFamily,
-                fontWeight = FontWeight.Bold, fontSize = 24.sp, lineHeight = 32.sp)
-
-            Spacer(Modifier.height(8.dp))
-
-            // Author
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(32.dp).clip(CircleShape).background(CharcoalGrey),
-                    contentAlignment = Alignment.Center) {
-                    Text("AK", color = LimeGreen, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            if (article != null) {
+                // Category + Source + Timestamp
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = article.category,
+                        color = MidnightBlack,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Medium,
+                        fontFamily = InterFamily,
+                        modifier = Modifier.clip(RoundedCornerShape(50.dp))
+                            .background(LimeGreen).padding(horizontal = 10.dp, vertical = 3.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(article.source, color = MediumGrey, fontSize = 12.sp, fontFamily = InterFamily)
+                    Spacer(Modifier.width(8.dp))
+                    Text(article.timestamp, color = MediumGrey, fontSize = 12.sp, fontFamily = InterFamily)
                 }
-                Spacer(Modifier.width(8.dp))
-                Text("By Ahmed Khan", color = OffWhite, fontFamily = InterFamily, fontSize = 14.sp)
-            }
 
-            Spacer(Modifier.height(16.dp))
-            HorizontalDivider(color = CharcoalGrey)
-            Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(12.dp))
 
-            // Body text
-            Text(
-                text = "Health authorities in Lahore have reported a significant surge in dengue cases as the monsoon season intensifies across Punjab. Over 340 new cases were confirmed in the past week alone, with multiple districts reporting clusters of infections.\n\nThe Provincial Health Department has activated emergency response teams and deployed additional fumigation squads across the most affected areas, including Gulberg, Model Town, and Defence Housing Authority.\n\nDr. Fatima Zahra, head of the Dengue Response Unit, stated that the current spike is directly linked to stagnant water pools formed after recent heavy rainfall. \"We are seeing a pattern similar to the 2019 outbreak, and we urge citizens to take preventive measures immediately,\" she said.\n\nThe government has also announced free dengue testing at all public hospitals and has set up dedicated dengue wards at Services Hospital, Mayo Hospital, and Jinnah Hospital Lahore.\n\nCitizens are advised to use mosquito repellent, wear full-sleeved clothing, and ensure no standing water collects around their homes. Any symptoms of high fever, body aches, and rash should be reported to the nearest health facility immediately.",
-                color = OffWhite, fontFamily = InterFamily, fontSize = 16.sp, lineHeight = 26.sp
-            )
+                // Headline
+                Text(
+                    text = article.title,
+                    color = OffWhite,
+                    fontFamily = SpaceGroteskFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 24.sp,
+                    lineHeight = 32.sp
+                )
 
-            Spacer(Modifier.height(24.dp))
+                Spacer(Modifier.height(8.dp))
 
-            // Related Articles
-            Text("Related Articles", color = OffWhite, fontFamily = SpaceGroteskFamily,
-                fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
-            Spacer(Modifier.height(12.dp))
-
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                items(listOf(
-                    "Punjab Govt Allocates Emergency Funds",
-                    "WHO Warns of Regional Dengue Spread",
-                    "Prevention Tips for Monsoon Season"
-                )) { title ->
-                    Column(
-                        modifier = Modifier.width(160.dp).clip(RoundedCornerShape(14.dp))
-                            .background(CharcoalGrey).padding(12.dp)
+                // Author
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        Modifier.size(32.dp).clip(CircleShape).background(CharcoalGrey),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Text(title, color = OffWhite, fontFamily = SpaceGroteskFamily,
-                            fontWeight = FontWeight.SemiBold, fontSize = 13.sp,
-                            maxLines = 3, overflow = TextOverflow.Ellipsis, lineHeight = 18.sp)
-                        Spacer(Modifier.height(6.dp))
-                        Text("Dawn News • 3h ago", color = MediumGrey, fontSize = 11.sp)
+                        val initials = article.source.take(2).uppercase()
+                        Text(initials, color = LimeGreen, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Text("By ${article.source}", color = OffWhite, fontFamily = InterFamily, fontSize = 14.sp)
+                }
+
+                Spacer(Modifier.height(16.dp))
+                HorizontalDivider(color = CharcoalGrey)
+                Spacer(Modifier.height(16.dp))
+
+                // Body text
+                Text(
+                    text = article.content,
+                    color = OffWhite,
+                    fontFamily = InterFamily,
+                    fontSize = 16.sp,
+                    lineHeight = 26.sp
+                )
+
+                Spacer(Modifier.height(24.dp))
+
+                // Related Articles
+                Text("Related Articles", color = OffWhite, fontFamily = SpaceGroteskFamily,
+                    fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
+                Spacer(Modifier.height(12.dp))
+
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    val related = articles.filter { it.id != article.id }.take(3)
+                    items(related) { relArticle ->
+                        Column(
+                            modifier = Modifier.width(160.dp).clip(RoundedCornerShape(14.dp))
+                                .background(CharcoalGrey).padding(12.dp)
+                        ) {
+                            Text(
+                                text = relArticle.title,
+                                color = OffWhite,
+                                fontFamily = SpaceGroteskFamily,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 13.sp,
+                                maxLines = 3,
+                                overflow = TextOverflow.Ellipsis,
+                                lineHeight = 18.sp
+                            )
+                            Spacer(Modifier.height(6.dp))
+                            Text("${relArticle.source} • ${relArticle.timestamp}", color = MediumGrey, fontSize = 11.sp)
+                        }
                     }
                 }
+            } else {
+                Text("Article not found", color = OffWhite, fontFamily = SpaceGroteskFamily)
             }
 
             Spacer(Modifier.height(24.dp))
