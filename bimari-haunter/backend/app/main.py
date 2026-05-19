@@ -59,10 +59,19 @@ app = FastAPI(
 
 # ── Include routers ─────────────────────────────────────────
 
+from app.api.routes import jobs, reports, sources, websocket, users, feed, chats, groups
+
+# ...
+
 app.include_router(sources.router)
 app.include_router(jobs.router)
 app.include_router(reports.router)
 app.include_router(websocket.router)
+app.include_router(users.router, prefix="/api/v1")
+app.include_router(feed.router, prefix="/api/v1")
+app.include_router(chats.router, prefix="/api/v1")
+app.include_router(groups.router, prefix="/api/v1")
+
 
 
 # ── Health check ────────────────────────────────────────────

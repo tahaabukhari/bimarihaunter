@@ -1,9 +1,7 @@
 """
 Scrape scheduler – orchestrates web and social source scraping.
 
-Creates ScrapeJob records, delegates to NewsCrawler / FacebookScraper,
-deduplicates via SHA-256 content hashes, runs the NLP pipeline,
-and posts everything in real-time directly to Google Cloud Firestore.
+RESERVE VERSION with Playwright Social Media Scrapers integrated.
 """
 
 from __future__ import annotations
@@ -20,7 +18,7 @@ from app.database.firestore import db
 from google.cloud import firestore
 from app.nlp.processor import NLPProcessor
 from app.scraper.crawler import NewsCrawler
-from app.scraper.facebook_client import FacebookScraper
+from reserve.social_playwright import PlaywrightSocialScraper
 
 logger = structlog.get_logger(__name__)
 
@@ -42,6 +40,16 @@ COORDINATES_MAP = {
     "balochistan": (28.4907, 65.0958),
 }
 
+# Targeted public health social search queries
+SOCIAL_SEARCH_QUERIES = [
+    "dengue Karachi",
+    "dengue Lahore",
+    "malaria Punjab",
+    "cholera Sindh",
+    "outbreak Peshawar",
+    "dengue Rawalpindi",
+]
+
 class ScrapeScheduler:
     """Coordinates concurrent scraping and fires results to Firestore."""
 
@@ -49,13 +57,14 @@ class ScrapeScheduler:
         self.max_concurrent = max_concurrent
         self._semaphore = asyncio.Semaphore(max_concurrent)
         self.nlp = NLPProcessor()
+        self.social_scraper = PlaywrightSocialScraper(use_headless=True)
 
     async def run_all(
         self,
         *,
         source_ids: Optional[Sequence[str]] = None,
     ) -> None:
-        """Scrape every active source from Firestore."""
+        """Scrape news articles and social media updates from Firestore."""
         
         # 1. Fetch news sources from Firestore
         news_ref = db.collection("news_sources")
@@ -88,25 +97,19 @@ class ScrapeScheduler:
                 source["is_active"] = True
                 news_sources.append(source)
 
-        # 3. Fetch active social sources from Firestore
-        social_ref = db.collection("social_sources")
-        social_docs = social_ref.where("is_active", "==", True).stream()
-        social_sources = []
-        for doc in social_docs:
-            data = doc.to_dict()
-            data["id"] = doc.id
-            social_sources.append(data)
-
-        # Filter by source_ids if provided
+        # Filter news by source_ids if provided
         if source_ids:
             news_sources = [s for s in news_sources if s["id"] in source_ids]
-            social_sources = [s for s in social_sources if s["id"] in source_ids]
 
         tasks: list[asyncio.Task] = []
+        
+        # Add news tasks
         for src in news_sources:
             tasks.append(asyncio.create_task(self._scrape_news(src)))
-        for src in social_sources:
-            tasks.append(asyncio.create_task(self._scrape_social(src)))
+            
+        # Add Playwright social media search tasks
+        for query in SOCIAL_SEARCH_QUERIES:
+            tasks.append(asyncio.create_task(self._scrape_social_playwright(query)))
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
         for i, result in enumerate(results):
@@ -117,7 +120,6 @@ class ScrapeScheduler:
 
     async def _scrape_news(self, source: dict) -> None:
         async with self._semaphore:
-            # Create a Scrape Job document inside Firestore to log activity
             job_ref = db.collection("scrape_jobs").document()
             job_id = job_ref.id
             
@@ -140,10 +142,7 @@ class ScrapeScheduler:
                 items_stored = 0
 
                 for url in urls:
-                    # 1. Compute SHA-256 hash of URL for deterministic document ID
                     url_hash = hashlib.sha256(url.encode()).hexdigest()
-
-                    # 2. Check if already processed in Firestore (deduplication)
                     doc_ref = db.collection("reports").document(url_hash)
                     doc_snap = doc_ref.get()
 
@@ -151,7 +150,6 @@ class ScrapeScheduler:
                         logger.debug("duplicate_prevented", url=url, hash=url_hash)
                         continue
 
-                    # 3. Fetch full article data
                     article_data = await crawler.fetch_article(url)
                     text = article_data.get("text") or ""
                     raw_html = article_data.get("raw_html") or ""
@@ -160,7 +158,6 @@ class ScrapeScheduler:
                     if not content:
                         continue
 
-                    # 4. Write raw document with status: "scraped"
                     published_at = article_data.get("published_at")
                     if not published_at:
                         published_at = datetime.now(timezone.utc)
@@ -173,154 +170,11 @@ class ScrapeScheduler:
                         "published_at": published_at,
                         "scraped_at": datetime.now(timezone.utc),
                         "status": "scraped",
+                        "source_type": "web",
                         "ai_analysis": {}
                     }
                     doc_ref.set(raw_doc)
 
-                    # 5. Run AI classifier (NLP Processor)
-                    try:
-                        nlp_result = self.nlp.process(content)
-
-                        # Determine severity string
-                        sev_score = nlp_result.get("severity", 0.0)
-                        severity_str = "high" if sev_score >= 0.6 else "medium" if sev_score >= 0.3 else "low"
-
-                        # Ensure summary is a list of sentences/strings as per schema
-                        summary_str = nlp_result.get("summary", "")
-                        summary_array = [s.strip() for s in summary_str.split(".") if s.strip()]
-
-                        # Find disease type
-                        diseases = nlp_result["entities"].get("diseases", [])
-                        detected_disease = diseases[0].lower() if diseases else "general outbreak"
-
-                        # Resolve geographic coordinates
-                        locations = nlp_result["entities"].get("locations", [])
-                        lat, lon = 30.3753, 69.3451 # General centroid of Pakistan
-                        for loc in locations:
-                            loc_lower = loc.lower().strip()
-                            if loc_lower in COORDINATES_MAP:
-                                lat, lon = COORDINATES_MAP[loc_lower]
-                                break
-
-                        # Build official AI analysis block
-                        ai_analysis = {
-                            "disease": detected_disease,
-                            "severity": severity_str,
-                            "summary": summary_array,
-                            "symptoms": nlp_result["entities"].get("symptoms", []),
-                            "locations": locations,
-                            "coordinates": firestore.GeoPoint(lat, lon),
-                            "confidence_score": nlp_result["classification"].get("score", 1.0),
-                            "model_used": nlp_result["model_metadata"].get("classifier", "facebook/bart-large-mnli")
-                        }
-
-                        # 6. Update document in Firestore to status: "analyzed"
-                        doc_ref.update({
-                            "ai_analysis": ai_analysis,
-                            "status": "analyzed"
-                        })
-                        items_stored += 1
-
-                        # Trigger real-time personalized location feed fan-out
-                        full_report = doc_ref.get().to_dict()
-                        full_report["id"] = doc_ref.id
-                        await self._fan_out_report(full_report)
-
-
-                    except Exception as nlp_err:
-                        logger.error("nlp_enrichment_failed", url=url, error=str(nlp_err))
-                        doc_ref.update({
-                            "status": "failed"
-                        })
-
-                # Update job status
-                job_ref.update({
-                    "status": "completed",
-                    "items_found": items_found,
-                    "items_stored": items_stored,
-                    "completed_at": datetime.now(timezone.utc)
-                })
-
-                # Update news source record in Firestore
-                db.collection("news_sources").document(source["id"]).update({
-                    "last_scraped_at": datetime.now(timezone.utc)
-                })
-
-                logger.info(
-                    "news_scrape_complete",
-                    source=source["name"],
-                    found=items_found,
-                    stored=items_stored,
-                )
-
-            except Exception as exc:
-                job_ref.update({
-                    "status": "failed",
-                    "error_message": str(exc)[:500],
-                    "completed_at": datetime.now(timezone.utc)
-                })
-                logger.error(
-                    "news_scrape_failed",
-                    source=source["name"],
-                    error=str(exc),
-                )
-
-    # ── Social scraping & Firestore Upload ──────────────────
-
-    async def _scrape_social(self, source: dict) -> None:
-        async with self._semaphore:
-            job_ref = db.collection("scrape_jobs").document()
-            job_id = job_ref.id
-            
-            job_ref.set({
-                "job_id": job_id,
-                "source_id": source["id"],
-                "source_name": source["name"],
-                "source_type": "social",
-                "job_type": "scrape",
-                "status": "running",
-                "started_at": datetime.now(timezone.utc),
-                "items_found": 0,
-                "items_stored": 0
-            })
-
-            try:
-                scraper = FacebookScraper(source["api_config"])
-                posts = await scraper.scrape(source["external_id"])
-                items_found = len(posts)
-                items_stored = 0
-
-                for post in posts:
-                    # 1. Deduplicate by content hash
-                    content_hash = post["content_hash"]
-                    doc_ref = db.collection("reports").document(content_hash)
-                    doc_snap = doc_ref.get()
-
-                    if doc_snap.exists:
-                        continue
-
-                    content = post.get("cleaned_text") or post.get("raw_text") or ""
-                    if not content:
-                        continue
-
-                    # 2. Write raw document
-                    published_at = post.get("published_at")
-                    if not published_at:
-                        published_at = datetime.now(timezone.utc)
-
-                    raw_doc = {
-                        "title": f"Social Update from {source['name']}",
-                        "source": source["name"],
-                        "url": post.get("permalink") or f"https://facebook.com/{post['external_post_id']}",
-                        "raw_text": content,
-                        "published_at": published_at,
-                        "scraped_at": datetime.now(timezone.utc),
-                        "status": "scraped",
-                        "ai_analysis": {}
-                    }
-                    doc_ref.set(raw_doc)
-
-                    # 3. NLP Enrichment
                     try:
                         nlp_result = self.nlp.process(content)
 
@@ -358,19 +212,12 @@ class ScrapeScheduler:
                         })
                         items_stored += 1
 
-                        # Trigger real-time personalized location feed fan-out
-                        full_report = doc_ref.get().to_dict()
-                        full_report["id"] = doc_ref.id
-                        await self._fan_out_report(full_report)
-
-
                     except Exception as nlp_err:
-                        logger.error("nlp_enrichment_failed_social", error=str(nlp_err))
+                        logger.error("nlp_enrichment_failed", url=url, error=str(nlp_err))
                         doc_ref.update({
                             "status": "failed"
                         })
 
-                # Update job status
                 job_ref.update({
                     "status": "completed",
                     "items_found": items_found,
@@ -378,13 +225,12 @@ class ScrapeScheduler:
                     "completed_at": datetime.now(timezone.utc)
                 })
 
-                # Update social source record in Firestore
-                db.collection("social_sources").document(source["id"]).update({
-                    "last_fetched_at": datetime.now(timezone.utc)
+                db.collection("news_sources").document(source["id"]).update({
+                    "last_scraped_at": datetime.now(timezone.utc)
                 })
 
                 logger.info(
-                    "social_scrape_complete",
+                    "news_scrape_complete",
                     source=source["name"],
                     found=items_found,
                     stored=items_stored,
@@ -397,44 +243,136 @@ class ScrapeScheduler:
                     "completed_at": datetime.now(timezone.utc)
                 })
                 logger.error(
-                    "social_scrape_failed",
+                    "news_scrape_failed",
                     source=source["name"],
                     error=str(exc),
                 )
 
-    async def _fan_out_report(self, report_data: dict) -> None:
-        """Clones a newly analyzed report to the personalized feed of all matching users in real-time."""
-        try:
-            locations = report_data.get("ai_analysis", {}).get("locations", [])
-            if not locations:
-                return
-                
-            # Capitalize to match standard user profile cities
-            resolved_cities = [loc.strip().capitalize() for loc in locations if loc.strip()]
-            resolved_cities = resolved_cities[:10]  # Firestore IN limit is 10
-            
-            if not resolved_cities:
-                return
-                
-            # Query all users located in these cities
-            users_ref = db.collection("users")
-            query = users_ref.where("live_location.city", "in", resolved_cities)
-            matching_users = query.stream()
-            
-            for user_doc in matching_users:
-                user_id = user_doc.id
-                user_feed_ref = db.collection("users").document(user_id).collection("feed")
-                
-                # Clone report to user's personalized feed
-                user_feed_ref.document(report_data["id"]).set(report_data)
-                
-                # Enforce Capped Stack FIFO (limit to 50 items)
-                current_feed_docs = user_feed_ref.order_by("published_at", direction="DESCENDING").stream()
-                for idx, f_doc in enumerate(current_feed_docs):
-                    if idx >= 50:
-                        user_feed_ref.document(f_doc.id).delete()
-                        
-            logger.info("report_fan_out_complete", report_id=report_data.get("id"), matched_cities=resolved_cities)
-        except Exception as e:
-            logger.error("report_fan_out_failed", error=str(e), report_id=report_data.get("id"))
+    # ── Playwright Social Scraping & Firestore Upload ───────
 
+    async def _scrape_social_playwright(self, query: str) -> None:
+        """Runs keyword searches concurrently on X and Facebook via Playwright."""
+        async with self._semaphore:
+            job_ref = db.collection("scrape_jobs").document()
+            job_id = job_ref.id
+            
+            job_ref.set({
+                "job_id": job_id,
+                "source_name": f"Social Search: {query}",
+                "source_type": "social",
+                "job_type": "scrape",
+                "status": "running",
+                "started_at": datetime.now(timezone.utc),
+                "items_found": 0,
+                "items_stored": 0
+            })
+
+            try:
+                # Scrape X and Facebook concurrently using Playwright
+                x_task = self.social_scraper.scrape_x(query, limit=10)
+                fb_task = self.social_scraper.scrape_facebook(query, limit=10)
+                
+                x_posts, fb_posts = await asyncio.gather(x_task, fb_task)
+                all_posts = x_posts + fb_posts
+                
+                items_found = len(all_posts)
+                items_stored = 0
+
+                for post in all_posts:
+                    content_hash = post["content_hash"]
+                    doc_ref = db.collection("reports").document(content_hash)
+                    doc_snap = doc_ref.get()
+
+                    # Deduplication
+                    if doc_snap.exists:
+                        continue
+
+                    # Write raw social document
+                    raw_doc = {
+                        "title": f"Social Update from {post['author']} ({post['platform'].upper()})",
+                        "source": f"{post['platform'].capitalize()} Search",
+                        "url": post["permalink"],
+                        "raw_text": post["raw_text"],
+                        "published_at": post["published_at"],
+                        "scraped_at": datetime.now(timezone.utc),
+                        "status": "scraped",
+                        "source_type": "social",
+                        "platform": post["platform"],
+                        "ai_analysis": {}
+                    }
+                    doc_ref.set(raw_doc)
+
+                    # Enrich using local NLP
+                    try:
+                        nlp_result = self.nlp.process(post["cleaned_text"])
+
+                        sev_score = nlp_result.get("severity", 0.0)
+                        severity_str = "high" if sev_score >= 0.6 else "medium" if sev_score >= 0.3 else "low"
+
+                        summary_str = nlp_result.get("summary", "")
+                        summary_array = [s.strip() for s in summary_str.split(".") if s.strip()]
+
+                        diseases = nlp_result["entities"].get("diseases", [])
+                        detected_disease = diseases[0].lower() if diseases else "general outbreak"
+
+                        # Resolve coordinates
+                        lat, lon = 30.3753, 69.3451
+                        if post["coordinates"]:
+                            lat, lon = post["coordinates"]
+                        else:
+                            locations = nlp_result["entities"].get("locations", [])
+                            for loc in locations:
+                                loc_lower = loc.lower().strip()
+                                if loc_lower in COORDINATES_MAP:
+                                    lat, lon = COORDINATES_MAP[loc_lower]
+                                    break
+
+                        ai_analysis = {
+                            "disease": detected_disease,
+                            "severity": severity_str,
+                            "summary": summary_array,
+                            "symptoms": nlp_result["entities"].get("symptoms", []),
+                            "locations": post["locations"] or nlp_result["entities"].get("locations", []),
+                            "coordinates": firestore.GeoPoint(lat, lon),
+                            "confidence_score": nlp_result["classification"].get("score", 1.0),
+                            "model_used": nlp_result["model_metadata"].get("classifier", "facebook/bart-large-mnli")
+                        }
+
+                        doc_ref.update({
+                            "ai_analysis": ai_analysis,
+                            "status": "analyzed"
+                        })
+                        items_stored += 1
+
+                    except Exception as nlp_err:
+                        logger.error("nlp_enrichment_failed_social_playwright", error=str(nlp_err))
+                        doc_ref.update({
+                            "status": "failed"
+                        })
+
+                # Log final job stats in Firestore
+                job_ref.update({
+                    "status": "completed",
+                    "items_found": items_found,
+                    "items_stored": items_stored,
+                    "completed_at": datetime.now(timezone.utc)
+                })
+
+                logger.info(
+                    "social_playwright_scrape_complete",
+                    query=query,
+                    found=items_found,
+                    stored=items_stored,
+                )
+
+            except Exception as exc:
+                job_ref.update({
+                    "status": "failed",
+                    "error_message": str(exc)[:500],
+                    "completed_at": datetime.now(timezone.utc)
+                })
+                logger.error(
+                    "social_playwright_scrape_failed",
+                    query=query,
+                    error=str(exc),
+                )

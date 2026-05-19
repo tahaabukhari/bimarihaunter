@@ -1,24 +1,10 @@
 # ── Stage: Production Image ─────────────────────────────────
-FROM python:3.11-slim
+# Use the official Microsoft Playwright image based on Ubuntu Jammy (22.04)
+# This prevents apt-get dependency issues with ttf-ubuntu-font-family
+FROM mcr.microsoft.com/playwright/python:v1.41.0-jammy
 
-# System deps for Playwright, psycopg, lxml
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    libpq-dev \
-    libnss3 \
-    libatk1.0-0 \
-    libatk-bridge2.0-0 \
-    libcups2 \
-    libxcomposite1 \
-    libxrandr2 \
-    libxdamage1 \
-    libgbm1 \
-    libpango-1.0-0 \
-    libcairo2 \
-    libasound2 \
-    libxshmfence1 \
-    fonts-liberation \
-    && rm -rf /var/lib/apt/lists/*
+# Note: We do not need to run apt-get for system deps because the playwright 
+# base image already includes all required libraries for Chromium.
 
 WORKDIR /app
 
@@ -26,20 +12,16 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install Playwright browsers (Chromium only for scraping)
-RUN playwright install chromium --with-deps
-
 # Download spaCy transformer model
 RUN python -m spacy download en_core_web_trf
 
-# Pre-download HuggingFace models during build
-RUN python -c "\
-from transformers import pipeline; \
-pipeline('zero-shot-classification', model='facebook/bart-large-mnli'); \
-pipeline('summarization', model='facebook/bart-large-cnn'); \
-print('Models cached successfully')"
+# Copy the models download script first to cache models
+COPY scripts/download_models.py scripts/download_models.py
 
-# Copy application code
+# Pre-download HuggingFace models during build using robust script
+RUN python scripts/download_models.py
+
+# Copy the rest of the application code
 COPY . .
 
 EXPOSE 8080

@@ -147,3 +147,13 @@ class DashboardStats(BaseModel):
     total_full_reports: int
     verified_reports: int
     pending_delivery: int
+
+
+# ── User location ───────────────────────────────────────────
+
+
+class UserLocationUpdate(BaseModel):
+    city: str
+    latitude: float
+    longitude: float
+
