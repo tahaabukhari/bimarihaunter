@@ -28,6 +28,9 @@ from app.database.models import (
 from app.nlp.processor import NLPProcessor
 from app.scraper.crawler import NewsCrawler
 from app.scraper.facebook_client import FacebookScraper
+from app.nlp.classifier import classify_article
+from app.services.firestore import get_firestore_client
+import uuid
 
 logger = structlog.get_logger(__name__)
 
@@ -122,6 +125,32 @@ class ScrapeScheduler:
                         result = await db.execute(stmt)
                         if result.rowcount:
                             items_stored += 1
+                            try:
+                                classification = classify_article(text)
+                                fs = get_firestore_client()
+                                article_id = str(uuid.uuid4())
+                                
+                                region = "Punjab"
+                                for city in ["Lahore", "Karachi", "Islamabad", "Rawalpindi", "Peshawar", "Quetta", "Multan", "Faisalabad"]:
+                                    if city.lower() in text.lower() or city.lower() in (article_data.get("title") or "").lower():
+                                        region = city
+                                        break
+                                        
+                                doc_data = {
+                                    "id": article_id,
+                                    "title": article_data.get("title") or "Untitled",
+                                    "body": text,
+                                    "source": "news",
+                                    "category": classification["category"],
+                                    "confidence": classification["confidence"],
+                                    "region": region,
+                                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                                    "url": url
+                                }
+                                fs.collection("articles").document(article_id).set(doc_data)
+                                logger.info("article_stored_in_firestore", id=article_id, category=classification["category"])
+                            except Exception as fs_exc:
+                                logger.error("firestore_article_storage_failed", url=url, error=str(fs_exc))
 
                     job.status = "completed"
                     job.items_found = items_found
@@ -196,6 +225,38 @@ class ScrapeScheduler:
                         result = await db.execute(stmt)
                         if result.rowcount:
                             items_stored += 1
+                            try:
+                                text = post.get("raw_text") or post.get("cleaned_text") or ""
+                                if text:
+                                    classification = classify_article(text)
+                                    fs = get_firestore_client()
+                                    post_id = str(uuid.uuid4())
+                                    
+                                    region = "Punjab"
+                                    for city in ["Lahore", "Karachi", "Islamabad", "Rawalpindi", "Peshawar", "Quetta", "Multan", "Faisalabad"]:
+                                        if city.lower() in text.lower():
+                                            region = city
+                                            break
+                                            
+                                    platform = source.platform.lower() if source.platform else "facebook"
+                                    if platform not in ["facebook", "twitter"]:
+                                        platform = "facebook"
+                                        
+                                    doc_data = {
+                                        "id": post_id,
+                                        "title": text[:60] + "..." if len(text) > 60 else text,
+                                        "body": text,
+                                        "source": platform,
+                                        "category": classification["category"],
+                                        "confidence": classification["confidence"],
+                                        "region": region,
+                                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                                        "url": post.get("permalink") or ""
+                                    }
+                                    fs.collection("articles").document(post_id).set(doc_data)
+                                    logger.info("social_post_stored_in_firestore", id=post_id, category=classification["category"])
+                            except Exception as fs_exc:
+                                logger.error("firestore_social_storage_failed", post_id=post.get("external_post_id"), error=str(fs_exc))
 
                     job.status = "completed"
                     job.items_found = items_found

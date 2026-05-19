@@ -15,9 +15,8 @@ import joblib
 from app.preprocess import clean_text
 
 # ── Resolve model paths ───────────────────────────────────
-_MODEL_DIR  = os.path.join(os.path.dirname(__file__), "model")
-_MODEL_PATH = os.path.join(_MODEL_DIR, "classifier.pkl")
-_VEC_PATH   = os.path.join(_MODEL_DIR, "vectorizer.pkl")
+_MODEL_PATH = os.path.join(os.path.dirname(__file__), "..", "news_classifier.joblib")
+_VEC_PATH   = os.path.join(os.path.dirname(__file__), "..", "tfidf_vectorizer.joblib")
 
 
 def _load_artifacts():

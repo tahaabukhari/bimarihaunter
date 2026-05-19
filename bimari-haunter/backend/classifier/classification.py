@@ -221,8 +221,12 @@ def train_model(dataset_path: str = _DATA_PATH) -> None:
     print("[5/5] Saving artifacts ...")
     joblib.dump(model, _MODEL_PATH)
     joblib.dump(vectorizer, _VEC_PATH)
+    joblib.dump(model, os.path.join(_BASE_DIR, "news_classifier.joblib"))
+    joblib.dump(vectorizer, os.path.join(_BASE_DIR, "tfidf_vectorizer.joblib"))
     print(f"      Model      -> {_MODEL_PATH}")
     print(f"      Vectorizer -> {_VEC_PATH}")
+    print(f"      Model (joblib) -> {os.path.join(_BASE_DIR, 'news_classifier.joblib')}")
+    print(f"      Vectorizer (joblib) -> {os.path.join(_BASE_DIR, 'tfidf_vectorizer.joblib')}")
     print("\n[OK] Training complete!\n")
 
 
