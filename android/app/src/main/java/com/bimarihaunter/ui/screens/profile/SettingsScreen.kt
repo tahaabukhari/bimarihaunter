@@ -33,6 +33,7 @@ fun SettingsScreen(
 
     Column(
         modifier = Modifier.fillMaxSize().background(MidnightBlack)
+            .navigationBarsPadding()
             .verticalScroll(rememberScrollState())
     ) {
         BimarihaunterTopAppBar(

@@ -2,6 +2,7 @@ package com.bimarihaunter
 
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.*
@@ -37,7 +38,9 @@ fun BimarihaunterApp() {
         val showBottomBar = currentRoute in mainRoutes
 
         Scaffold(
-            containerColor = androidx.compose.ui.graphics.Color.Transparent,
+            containerColor = com.bimarihaunter.ui.theme.MidnightBlack,
+            // Let Scaffold handle all insets (status bar + nav bar)
+            contentWindowInsets = WindowInsets(0, 0, 0, 0),
             bottomBar = {
                 if (showBottomBar) {
                     BottomNavBar(

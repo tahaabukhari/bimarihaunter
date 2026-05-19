@@ -26,7 +26,7 @@ fun MapDetailScreen(
     locationId: String? = null,
     onNavigateBack: () -> Unit = {}
 ) {
-    Column(modifier = Modifier.fillMaxSize().background(MidnightBlack)) {
+    Column(modifier = Modifier.fillMaxSize().background(MidnightBlack).navigationBarsPadding()) {
         // Top 30% map placeholder
         Box(
             modifier = Modifier.fillMaxWidth().fillMaxHeight(0.3f)

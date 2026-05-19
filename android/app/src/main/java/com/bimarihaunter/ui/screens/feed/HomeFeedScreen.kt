@@ -62,6 +62,7 @@ fun HomeFeedScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(MidnightBlack)
+            .statusBarsPadding()
     ) {
         // Custom Top Bar
         Row(

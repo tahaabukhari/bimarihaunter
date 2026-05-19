@@ -31,6 +31,8 @@ fun ArticleDetailScreen(
 ) {
     Column(
         modifier = Modifier.fillMaxSize().background(MidnightBlack)
+            .statusBarsPadding()
+            .navigationBarsPadding()
             .verticalScroll(rememberScrollState())
     ) {
         // Top bar

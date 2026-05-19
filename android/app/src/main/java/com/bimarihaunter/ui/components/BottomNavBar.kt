@@ -1,6 +1,6 @@
 package com.bimarihaunter.ui.components
 
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.ChatBubble
@@ -14,6 +14,7 @@ import androidx.compose.material.icons.outlined.Map
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarDefaults
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Text
@@ -47,10 +48,12 @@ fun BottomNavBar(
     modifier: Modifier = Modifier
 ) {
     NavigationBar(
-        modifier = modifier.height(72.dp),
+        modifier = modifier,
         containerColor = MidnightBlack,
         contentColor = OffWhite,
-        tonalElevation = 0.dp
+        tonalElevation = 0.dp,
+        // Let M3 handle system navigation bar insets automatically
+        windowInsets = NavigationBarDefaults.windowInsets
     ) {
         bottomNavItems.forEach { item ->
             val isSelected = currentRoute == item.route

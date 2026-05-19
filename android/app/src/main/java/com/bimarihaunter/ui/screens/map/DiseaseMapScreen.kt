@@ -139,7 +139,8 @@ fun DiseaseMapScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 24.dp)
+                    .statusBarsPadding()
+                    .padding(horizontal = 20.dp, vertical = 12.dp)
                     .clip(RoundedCornerShape(14.dp))
                     .background(CharcoalGrey.copy(alpha = 0.95f))
                     .padding(horizontal = 16.dp, vertical = 12.dp),
@@ -153,7 +154,8 @@ fun DiseaseMapScreen(
 
             // Filter chips below search
             Row(modifier = Modifier
-                .padding(start = 20.dp, top = 80.dp)
+                .statusBarsPadding()
+                .padding(start = 20.dp, top = 64.dp)
                 .align(Alignment.TopStart)) {
                 FilterChipRow(
                     chips = listOf("Disease", "Disaster", "All"),

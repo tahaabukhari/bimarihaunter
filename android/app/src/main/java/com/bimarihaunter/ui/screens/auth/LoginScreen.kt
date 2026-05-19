@@ -44,6 +44,7 @@ fun LoginScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(MidnightBlack)
+            .systemBarsPadding()
             .verticalScroll(rememberScrollState())
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally

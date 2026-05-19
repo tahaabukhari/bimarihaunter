@@ -52,7 +52,7 @@ fun GroupChatScreen(
 ) {
     var messageText by remember { mutableStateOf("") }
 
-    Column(modifier = Modifier.fillMaxSize().background(MidnightBlack)) {
+    Column(modifier = Modifier.fillMaxSize().background(MidnightBlack).navigationBarsPadding()) {
         // Top bar
         BimarihaunterTopAppBar(
             title = "Dengue Watch — Lahore",
@@ -106,7 +106,9 @@ fun GroupChatScreen(
 
         // Input bar
         Row(
-            modifier = Modifier.fillMaxWidth().padding(12.dp)
+            modifier = Modifier.fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(12.dp)
                 .clip(RoundedCornerShape(20.dp)).background(CharcoalGrey)
                 .padding(horizontal = 8.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically

@@ -61,6 +61,7 @@ fun OnboardingScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(MidnightBlack)
+            .systemBarsPadding()
             .padding(24.dp)
     ) {
         // Skip button

@@ -40,7 +40,7 @@ fun AlertsScreen(
 ) {
     var selectedChip by remember { mutableStateOf("All") }
 
-    Column(modifier = Modifier.fillMaxSize().background(MidnightBlack)) {
+    Column(modifier = Modifier.fillMaxSize().background(MidnightBlack).navigationBarsPadding()) {
         BimarihaunterTopAppBar(
             title = "Alerts",
             showBackArrow = true,

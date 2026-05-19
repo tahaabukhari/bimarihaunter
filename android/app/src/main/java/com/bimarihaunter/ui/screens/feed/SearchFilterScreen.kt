@@ -37,7 +37,10 @@ fun SearchFilterScreen(
     val recentSearches = listOf("Dengue Lahore", "Flood Sindh", "COVID vaccine")
 
     Column(
-        modifier = Modifier.fillMaxSize().background(MidnightBlack).padding(24.dp)
+        modifier = Modifier.fillMaxSize().background(MidnightBlack)
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .padding(24.dp)
     ) {
         // Search bar
         OutlinedTextField(

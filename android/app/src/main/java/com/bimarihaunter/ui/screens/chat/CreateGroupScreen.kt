@@ -43,7 +43,7 @@ fun CreateGroupScreen(
     var searchQuery by remember { mutableStateOf("") }
     val selectedMembers = remember { mutableStateListOf<Contact>() }
 
-    Column(modifier = Modifier.fillMaxSize().background(MidnightBlack)) {
+    Column(modifier = Modifier.fillMaxSize().background(MidnightBlack).navigationBarsPadding()) {
         BimarihaunterTopAppBar(
             title = "New Group",
             showBackArrow = true,

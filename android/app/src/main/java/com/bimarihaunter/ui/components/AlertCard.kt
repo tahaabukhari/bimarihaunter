@@ -48,11 +48,12 @@ fun AlertCard(
     Row(
         modifier = modifier
             .fillMaxWidth()
+            .height(IntrinsicSize.Min) // Required for fillMaxHeight on the border
             .clip(RoundedCornerShape(16.dp))
             .background(CharcoalGrey)
             .clickable { onClick() }
     ) {
-        // Left severity border
+        // Left severity border — now visible because parent uses IntrinsicSize.Min
         Box(
             modifier = Modifier
                 .width(4.dp)
