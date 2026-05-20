@@ -1,10 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException
+from datetime import datetime, timezone
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from typing import Dict, Any
 from google.cloud import firestore
 
 from app.services.firebase_auth import verify_firebase_token
 from app.database.firestore import db
-from app.api.schemas import UserLocationUpdate
+from app.api.schemas import LocationUpdateRequest, UserRegisterRequest, UserPreferencesRequest
+from app.api.routes.jobs import run_scraper_background
+
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -23,7 +26,7 @@ async def get_current_user(user_token: dict = Depends(verify_firebase_token)) ->
 
 @router.post("/location")
 async def update_user_location(
-    location: UserLocationUpdate,
+    location: LocationUpdateRequest,
     user_token: dict = Depends(verify_firebase_token)
 ) -> Dict[str, Any]:
     """
@@ -96,4 +99,79 @@ async def update_user_location(
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to update location/feed: {str(e)}")
+
+
+@router.post("/register")
+async def register_user(
+    user_data: UserRegisterRequest
+) -> Dict[str, Any]:
+    """
+    Registers a new user and writes their details to Firestore.
+    """
+    try:
+        user_ref = db.collection("users").document(user_data.uid)
+        user_ref.set({
+            "uid": user_data.uid,
+            "email": user_data.email,
+            "name": user_data.name,
+            "phone_number": user_data.phone_number,
+            "avatar_url": user_data.avatar_url,
+            "initials": "".join([part[0].upper() for part in user_data.name.split() if part])[:2],
+            "created_at": firestore.SERVER_TIMESTAMP,
+            "updated_at": firestore.SERVER_TIMESTAMP
+        }, merge=True)
+        return {
+            "status": "success",
+            "message": "User registered successfully",
+            "uid": user_data.uid
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to register user: {str(e)}")
+
+
+@router.post("/{uid}/preferences")
+async def update_user_preferences(
+    uid: str,
+    prefs: UserPreferencesRequest,
+    background_tasks: BackgroundTasks
+) -> Dict[str, Any]:
+    """
+    Updates the user's outbreak preferences (diseases, location, radius).
+    Immediately triggers a localized scraper job in the background to refresh their feed.
+    """
+    try:
+        user_ref = db.collection("users").document(uid)
+        
+        # 1. Update preferences and location in user profile
+        user_ref.set({
+            "preferences": {
+                "diseases": prefs.diseases,
+                "radius": prefs.radius,
+                "city": prefs.city,
+                "coordinates": firestore.GeoPoint(prefs.latitude, prefs.longitude)
+            },
+            # Also sync live_location for backwards compatibility
+            "live_location": {
+                "city": prefs.city,
+                "coordinates": firestore.GeoPoint(prefs.latitude, prefs.longitude)
+            },
+            "updated_at": firestore.SERVER_TIMESTAMP
+        }, merge=True)
+        
+        # 2. Trigger the instant scraper in the background
+        background_tasks.add_task(
+            run_scraper_background,
+            user_id=uid,
+            city=prefs.city,
+            lat=prefs.latitude,
+            lon=prefs.longitude
+        )
+        
+        return {
+            "status": "success",
+            "message": "Preferences updated and background scrape job triggered successfully."
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update preferences: {str(e)}")
+
 

@@ -133,8 +133,8 @@ class NLPProcessor:
     ) -> dict[str, list]:
         """Extract named entities from text.
 
-        For English uses spaCy NER; for Urdu uses rule-based keyword
-        matching.
+        For English uses spaCy NER with a rule-based keyword fallback;
+        for Urdu uses rule-based keyword matching.
         """
         if lang == "ur":
             urdu_ents = extract_urdu_entities(text)
@@ -147,28 +147,69 @@ class NLPProcessor:
                 "dates": [],
             }
 
-        doc = self.spacy(text)
         diseases: list[str] = []
+        symptoms: list[str] = []
         locations: list[str] = []
         organizations: list[str] = []
         people: list[str] = []
         dates: list[str] = []
 
-        for ent in doc.ents:
-            if ent.label_ in ("DISEASE", "HEALTH"):
-                diseases.append(ent.text)
-            elif ent.label_ == "GPE":
-                locations.append(ent.text)
-            elif ent.label_ == "ORG":
-                organizations.append(ent.text)
-            elif ent.label_ == "PERSON":
-                people.append(ent.text)
-            elif ent.label_ == "DATE":
-                dates.append(ent.text)
+        try:
+            doc = self.spacy(text)
+            for ent in doc.ents:
+                if ent.label_ in ("DISEASE", "HEALTH"):
+                    diseases.append(ent.text)
+                elif ent.label_ == "GPE":
+                    locations.append(ent.text)
+                elif ent.label_ == "ORG":
+                    organizations.append(ent.text)
+                elif ent.label_ == "PERSON":
+                    people.append(ent.text)
+                elif ent.label_ == "DATE":
+                    dates.append(ent.text)
+        except Exception as exc:
+            logger.warning("spacy_ner_failed_falling_back_to_rules", error=str(exc))
+
+        # Enrich/Fallback with explicit rule-based keyword matching for English text
+        lowered = text.lower()
+        
+        # 1. Disease matching
+        diseases_map = {
+            "dengue": ["dengue", "breakbone fever"],
+            "malaria": ["malaria", "plasmodium"],
+            "typhoid": ["typhoid", "enteric fever"],
+            "cholera": ["cholera", "waterborne diarrhea"],
+            "influenza": ["influenza", "flu", "cough", "respiratory", "cold"],
+            "covid": ["covid", "corona", "sars-cov-2"]
+        }
+        for disease, keywords in diseases_map.items():
+            if any(k in lowered for k in keywords):
+                diseases.append(disease.capitalize())
+                
+        # 2. Symptom matching
+        symptoms_map = {
+            "fever": ["fever", "high temperature", "chill"],
+            "cough": ["cough", "coughing"],
+            "headache": ["headache"],
+            "diarrhea": ["diarrhea"],
+            "joint pain": ["joint pain", "muscle pain"],
+            "vomiting": ["vomiting", "nausea"]
+        }
+        for symptom, keywords in symptoms_map.items():
+            if any(k in lowered for k in keywords):
+                symptoms.append(symptom.capitalize())
+                
+        # 3. Location matching
+        pakistan_cities = [
+            "Karachi", "Lahore", "Islamabad", "Rawalpindi", "Peshawar", "Quetta", "Multan", "Faisalabad", "Sialkot", "Gujranwala", "Sindh", "Punjab", "Kpk", "Balochistan"
+        ]
+        for city in pakistan_cities:
+            if city.lower() in lowered:
+                locations.append(city)
 
         return {
             "diseases": list(set(diseases)),
-            "symptoms": [],
+            "symptoms": list(set(symptoms)),
             "locations": list(set(locations)),
             "organizations": list(set(organizations)),
             "people": list(set(people)),
@@ -190,11 +231,24 @@ class NLPProcessor:
                 "all_scores": dict(zip(result["labels"], result["scores"])),
             }
         except Exception as exc:
-            logger.error("classification_failed", error=str(exc))
+            logger.warning("classification_failed_falling_back_to_rules", error=str(exc))
+            lowered = text.lower()
+            category = "general health information"
+            score = 0.8
+            
+            # Simple rule-based classification based on keywords
+            outbreak_keywords = ["outbreak", "spread", "cases", "infected", "confirmed", "dengue", "malaria", "typhoid", "virus", "fever"]
+            advisory_keywords = ["advisory", "prevention", "guideline", "avoid", "protect", "hygiene", "wear mask", "vaccine"]
+            
+            if any(k in lowered for k in outbreak_keywords):
+                category = "disease outbreak alert"
+            elif any(k in lowered for k in advisory_keywords):
+                category = "health advisory warning"
+                
             return {
-                "category": "general health information",
-                "score": 0.0,
-                "all_scores": {},
+                "category": category,
+                "score": score,
+                "all_scores": {category: score},
             }
 
     # ── Summarisation ───────────────────────────────────────
@@ -213,7 +267,11 @@ class NLPProcessor:
             )
             return result[0]["summary_text"]
         except Exception as exc:
-            logger.error("summarization_failed", error=str(exc))
+            logger.warning("summarization_failed_falling_back_to_sentences", error=str(exc))
+            # Return the first 2-3 sentences as the summary
+            sentences = [s.strip() for s in re.split(r'[.!?]', text) if s.strip()]
+            if sentences:
+                return ". ".join(sentences[:3]) + "."
             return text[:300]
 
     # ── Statistics extraction ───────────────────────────────

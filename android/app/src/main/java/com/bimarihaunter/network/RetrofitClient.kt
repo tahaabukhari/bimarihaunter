@@ -9,7 +9,7 @@ import java.util.concurrent.TimeUnit
 
 object RetrofitClient {
     // Default to localhost routing from emulator. Replace with your Cloud Run deployment URL.
-    private const val BASE_URL = "http://10.0.2.2:8000/"
+    private const val BASE_URL = "https://bimari-haunter-723264184490.asia-southeast1.run.app/"
 
     private val gson = GsonBuilder()
         .setDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSSSS")
