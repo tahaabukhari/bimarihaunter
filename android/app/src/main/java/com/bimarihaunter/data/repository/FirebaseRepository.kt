@@ -7,6 +7,9 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import com.bimarihaunter.network.RetrofitClient
+import kotlinx.coroutines.tasks.await
+import timber.log.Timber
+import com.bimarihaunter.network.UserRegisterRequest
 
 class FirebaseRepository {
     private val db = FirebaseFirestore.getInstance()
@@ -108,8 +111,36 @@ class FirebaseRepository {
     }
 
     // User profiles
-    fun saveUserProfile(user: User) {
-        db.collection("users").document(user.uid).set(user)
+    suspend fun saveUserProfile(user: User) {
+        val userMap = hashMapOf(
+            "uid" to user.uid,
+            "name" to user.name,
+            "email" to user.email,
+            "phoneNumber" to user.phoneNumber,
+            "avatarUrl" to user.avatarUrl,
+            "initials" to user.initials,
+            "createdAt" to user.createdAt
+        )
+        try {
+            db.collection("users").document(user.uid).set(userMap).await()
+            Timber.d("User profile written to Firestore: ${user.uid}")
+        } catch (e: Exception) {
+            Timber.e(e, "Failed to write user profile to Firestore: ${user.uid}")
+        }
+
+        try {
+            val request = UserRegisterRequest(
+                uid = user.uid,
+                email = user.email,
+                name = user.name,
+                phone_number = user.phoneNumber.ifBlank { null },
+                avatar_url = user.avatarUrl.ifBlank { null }
+            )
+            RetrofitClient.apiService.registerUser(request)
+            Timber.d("User registered with backend successfully: ${user.uid}")
+        } catch (e: Exception) {
+            Timber.w(e, "Failed to register user with backend: ${user.uid}")
+        }
     }
 
     fun getUserProfile(uid: String, onComplete: (User?) -> Unit) {
