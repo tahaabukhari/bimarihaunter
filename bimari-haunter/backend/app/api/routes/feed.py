@@ -49,7 +49,7 @@ def _serialize_doc(doc_id: str, data: dict) -> dict:
     return data
 
 
-@router.get("/")
+@router.get("")
 async def get_feed(
     limit: int = Query(50, ge=1, le=100),
     user_token: dict = Depends(verify_firebase_token),

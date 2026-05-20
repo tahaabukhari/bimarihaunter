@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     )
 
     # Override via GEMINI_API_KEY environment variable in Cloud Run
-    gemini_api_key: str = "AIzaSyDpJ_0HG5zNQxoMciTkwlIIz0cFNaV1rwA"
+    gemini_api_key: str = ""
 
     # Operational limits
     max_concurrent_scrapers: int = 5

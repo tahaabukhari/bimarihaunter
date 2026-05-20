@@ -36,6 +36,12 @@ import timber.log.Timber
 // ─────────────────────────── ViewModel ───────────────────────────────────────
 
 /**
+ * [ARCHITECTURAL DESIGN DECISION: FIRESTORE-DIRECT SYNCHRONIZATION]
+ * Direct messages between users are intentionally written and read directly from Firestore
+ * (using standard snapshot listeners) rather than routing through the FastAPI REST server.
+ * This offloads low-level background REST communication overhead, provides offline-first resiliency,
+ * maintains real-time synchronization, and leverages native Firestore caching directly on the client.
+ *
  * Manages a 1-to-1 direct chat between the current user and [otherUserId].
  * Chat documents live at:  Firestore → direct_chats / {chatId} / messages
  * where chatId = sorted(uid1, uid2).join("_")
@@ -108,6 +114,11 @@ class UserDirectChatViewModel : ViewModel() {
 // ─────────────────────────── Screen ──────────────────────────────────────────
 
 /**
+ * [ARCHITECTURAL DESIGN DECISION: FIRESTORE-DIRECT SYNCHRONIZATION]
+ * This screen leverages native Firestore-direct queries and listeners rather than REST APIs.
+ * This decision maximizes local UI performance, enables instant real-time snapshot listener
+ * updates with negligible latency, and provides a robust offline chat experience.
+ *
  * 1-to-1 direct chat screen.
  *
  * @param otherUserId  Firestore UID of the chat partner.

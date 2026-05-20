@@ -11,6 +11,12 @@ import kotlinx.coroutines.launch
 class MapViewModel(private val repository: FeedRepository) : ViewModel() {
     private val _mapMarkers = MutableStateFlow<List<MapMarker>>(emptyList())
     val mapMarkers: StateFlow<List<MapMarker>> = _mapMarkers
+
+    private val _isSyncing = MutableStateFlow(false)
+    val isSyncing: StateFlow<Boolean> = _isSyncing
+
+    private val _syncError = MutableStateFlow<String?>(null)
+    val syncError: StateFlow<String?> = _syncError
     
     init {
         viewModelScope.launch {
@@ -26,6 +32,35 @@ class MapViewModel(private val repository: FeedRepository) : ViewModel() {
                         summary = report.summary.joinToString(separator = " ")
                     )
                 }
+            }
+        }
+    }
+
+    fun syncFeed(context: android.content.Context, latitude: Double?, longitude: Double?, onComplete: () -> Unit = {}) {
+        viewModelScope.launch {
+            _isSyncing.value = true
+            _syncError.value = null
+            try {
+                val lat = latitude ?: 30.3753
+                val lon = longitude ?: 69.3451
+                var cityName = "Pakistan"
+                try {
+                    val geocoder = android.location.Geocoder(context, java.util.Locale.getDefault())
+                    @Suppress("DEPRECATION")
+                    val addresses = geocoder.getFromLocation(lat, lon, 1)
+                    if (!addresses.isNullOrEmpty()) {
+                        cityName = addresses[0].locality ?: addresses[0].subAdminArea ?: addresses[0].adminArea ?: "Pakistan"
+                    }
+                } catch (e: Exception) {
+                    timber.log.Timber.w(e, "Geocoder failed, falling back to default city name.")
+                }
+                repository.syncFeed(cityName, lat, lon)
+                onComplete()
+            } catch (e: Exception) {
+                _syncError.value = e.localizedMessage ?: "Sync failed"
+                timber.log.Timber.e(e, "MapViewModel syncFeed failed")
+            } finally {
+                _isSyncing.value = false
             }
         }
     }

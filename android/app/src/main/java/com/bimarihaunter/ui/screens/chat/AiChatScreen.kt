@@ -23,6 +23,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import android.app.Application
+import androidx.compose.ui.platform.LocalContext
 import com.bimarihaunter.R
 import com.bimarihaunter.ui.components.BimarihaunterTopAppBar
 import com.bimarihaunter.ui.components.ChatBubble
@@ -35,7 +39,14 @@ fun AiChatScreen(
     onNavigateBack: () -> Unit = {}
 ) {
     var messageText by remember { mutableStateOf("") }
-    val chatViewModel: AiChatViewModel = viewModel()
+    val context = LocalContext.current
+    val chatViewModel: AiChatViewModel = viewModel(
+        factory = viewModelFactory {
+            initializer {
+                AiChatViewModel(context.applicationContext as Application)
+            }
+        }
+    )
     val messages by chatViewModel.messages.collectAsState()
     val isLoading by chatViewModel.isLoading.collectAsState()
     val errorMessageState by chatViewModel.errorMessage.collectAsState()

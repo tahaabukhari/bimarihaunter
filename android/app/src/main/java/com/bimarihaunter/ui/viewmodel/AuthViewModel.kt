@@ -64,7 +64,9 @@ class AuthViewModel() : ViewModel() {
                         phoneNumber = user.phoneNumber ?: "",
                         initials = if (initials.isNotEmpty()) initials else "US"
                     )
-                    repository.saveUserProfile(newProfile)
+                    viewModelScope.launch {
+                        repository.saveUserProfile(newProfile)
+                    }
                     _userProfile.value = newProfile
                 }
             }

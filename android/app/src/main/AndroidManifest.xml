@@ -21,7 +21,7 @@
 
         <meta-data
             android:name="com.google.android.geo.API_KEY"
-            android:value="AIzaSyAsmQFOolaWuzVzJ3zIPUb8wDjUv7yf_U4" />
+            android:value="${googleMapsApiKey}" />
 
         <service
             android:name=".fcm.BimarihaunterMessagingService"

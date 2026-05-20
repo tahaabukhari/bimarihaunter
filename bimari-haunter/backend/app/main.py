@@ -53,3 +53,27 @@ async def health_check():
 @app.get("/")
 async def root():
     return {"message": "BimariHaunter API is running", "docs": "/docs"}
+
+
+# ── Startup Daemon (Scraper execution every 4 hours) ────────
+import asyncio
+
+async def scraper_cron_loop():
+    logger.info("Starting scraper_cron_loop background daemon (interval: 4 hours)")
+    # Initial sleep of 10 seconds to allow the backend to bind and complete start-up checks
+    await asyncio.sleep(10)
+    while True:
+        try:
+            logger.info("Triggering background scheduled scrape...")
+            from app.api.routes.jobs import run_scraper_background
+            await run_scraper_background()
+            logger.info("Scheduled scrape iteration complete.")
+        except Exception as e:
+            logger.error("Error in scheduled scraper execution", error=str(e))
+        # Wait 4 hours (14400 seconds)
+        await asyncio.sleep(14400)
+
+@app.on_event("startup")
+async def startup_event():
+    logger.info("FastAPI backend initialized, starting background scraper scheduler.")
+    asyncio.create_task(scraper_cron_loop())

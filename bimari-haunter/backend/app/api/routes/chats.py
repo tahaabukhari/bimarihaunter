@@ -271,76 +271,27 @@ async def send_message(
                 "timestamp": firestore.SERVER_TIMESTAMP
             })
             
-        # ── Mode 2: Agentic Smart Mode (Vertex AI with AI Studio fallback) ──
+        # ── Mode 2: Agentic Smart Mode (Gemini AI Studio Direct Flow) ──
         else:
-            ai_response_text = ""
-            vertex_success = False
-            
-            # 1. Try Vertex AI first (GCP Production Architecture)
-            try:
-                import vertexai
-                from vertexai.generative_models import GenerativeModel as VertexGenerativeModel
-                from vertexai.generative_models import Tool as VertexTool
-                from vertexai.generative_models import FunctionDeclaration as VertexFunctionDeclaration
-                
-                # Dynamic Credential Integration
-                base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-                key_path = None
-                for root_dir in [base_dir, os.path.dirname(base_dir)]:
-                    for file in os.listdir(root_dir):
-                        if "firebase-adminsdk" in file and file.endswith(".json"):
-                            key_path = os.path.join(root_dir, file)
-                            break
-                    if key_path:
-                        break
-                
-                if key_path:
-                    logger.info("Initializing Vertex AI with Service Account Key", path=key_path)
-                    from google.auth import load_credentials_from_file
-                    credentials, project_id = load_credentials_from_file(key_path)
-                    vertexai.init(project=project_id, location="us-central1", credentials=credentials)
-                else:
-                    logger.info("Initializing Vertex AI with Cloud Default Credentials")
-                    project_id = os.environ.get("GCP_PROJECT", "bimarihaunter-backend")
-                    vertexai.init(project=project_id, location="us-central1")
-                
-                # Define Vertex AI function declarations matching local tools
-                query_outbreaks_decl = VertexFunctionDeclaration(
-                    name="query_outbreaks",
-                    description="Queries Firestore active outbreak reports in a specific Pakistan city. Use this to get verified database reports.",
-                    parameters={
-                        "type": "OBJECT",
-                        "properties": {
-                            "city": {"type": "STRING", "description": "The name of the city, e.g., Karachi, Lahore"}
-                        },
-                        "required": ["city"]
-                    }
+            api_key = settings.gemini_api_key or os.environ.get("GEMINI_API_KEY", "")
+            if not api_key:
+                logger.warning("gemini_api_key_missing_using_sandbox_advisory")
+                ai_response_text = (
+                    "⚠️ Gemini API key is not configured. Please contact support."
                 )
-                
-                query_web_search_decl = VertexFunctionDeclaration(
-                    name="query_web_search",
-                    description="Performs a live Yahoo web search for Pakistan health news. Use when breaking or real-time news is needed.",
-                    parameters={
-                        "type": "OBJECT",
-                        "properties": {
-                            "query_str": {"type": "STRING", "description": "Specific search query text"}
-                        },
-                        "required": ["query_str"]
-                    }
-                )
-                
-                vertex_tools = VertexTool(
-                    function_declarations=[query_outbreaks_decl, query_web_search_decl]
-                )
+            else:
+                genai.configure(api_key=api_key)
                 
                 system_instruction = (
                     "You are the BimariHaunter AI Outbreak Intelligence Agent, a professional medical advisor "
-                    "and disease prevention expert in Pakistan. Always prioritize checked reports. Provide precise, "
-                    "actionable advice with symptoms, precautionary advice, and local hospital recommendations. "
-                    "Keep your tone empathetic and clear."
+                    "and disease prevention expert in Pakistan.\n"
+                    "You have direct access to tools to help answer user questions:\n"
+                    "1. query_outbreaks(city): check verified outbreak reports inside our Firestore database.\n"
+                    "2. query_web_search(query_str): run live web search queries to fetch real-time breaking news.\n\n"
+                    "Always prioritize checked reports. Provide precise, actionable advice with symptoms, "
+                    "precautionary advice, and local hospital recommendations. Keep your tone empathetic and clear."
                 )
                 
-                # Fetch recent conversation history
                 history_docs = messages_ref.order_by("timestamp", direction="DESCENDING").limit(5).stream()
                 history_list = []
                 for h in reversed(list(history_docs)):
@@ -353,110 +304,28 @@ async def send_message(
                     f"User Query: {msg_input.text}"
                 )
                 
-                # Use standard gemini-1.5-flash for Vertex AI
-                model = VertexGenerativeModel(
-                    model_name="gemini-1.5-flash",
-                    tools=[vertex_tools],
-                    system_instruction=system_instruction,
-                    generation_config={"temperature": 0.3}
-                )
-                
-                chat = model.start_chat()
-                response = chat.send_message(prompt)
-                
-                # Vertex AI Chat Tool Calling Execution Loop
-                curr_response = response
-                while curr_response.candidates[0].content.parts and len(curr_response.candidates[0].content.parts) > 0 and curr_response.candidates[0].content.parts[0].function_calls:
-                    function_calls = curr_response.candidates[0].content.parts[0].function_calls
-                    
-                    from vertexai.generative_models import Part
-                    response_parts = []
-                    
-                    for function_call in function_calls:
-                        name = function_call.name
-                        args = function_call.args
-                        
-                        logger.info("Executing Vertex tool call", tool=name, args=args)
-                        
-                        if name == "query_outbreaks":
-                            city = args.get("city", "")
-                            result = query_outbreaks(city)
-                        elif name == "query_web_search":
-                            query_str = args.get("query_str", "")
-                            result = query_web_search(query_str)
-                        else:
-                            result = f"Error: Tool {name} not found."
-                            
-                        response_parts.append(Part.from_function_response(
-                            name=name,
-                            response={"result": result}
-                        ))
-                    
-                    curr_response = chat.send_message(response_parts)
-                
-                ai_response_text = curr_response.text
-                vertex_success = True
-                logger.info("Vertex AI Chat successfully processed", response_len=len(ai_response_text))
-                
-            except Exception as vertex_err:
-                logger.warning("Vertex AI processing failed; falling back to Google AI Studio", error=str(vertex_err))
-                vertex_success = False
-            
-            # 2. Fallback to Google AI Studio (Hobbyist / API Key mode)
-            if not vertex_success:
-                api_key = settings.gemini_api_key or os.environ.get("GEMINI_API_KEY", "")
-                if not api_key:
-                    logger.warning("gemini_api_key_missing_using_sandbox_advisory")
-                    ai_response_text = (
-                        "⚠️ Gemini API key is not configured. Please contact support."
+                try:
+                    # Prioritize gemini-1.5-flash which is much faster and supports AQ keys
+                    logger.info("Initializing Google AI Studio with gemini-1.5-flash")
+                    model = genai.GenerativeModel(
+                        model_name="gemini-1.5-flash",
+                        tools=[query_outbreaks, query_web_search],
+                        generation_config={"temperature": 0.3},
+                        system_instruction=system_instruction
                     )
-                else:
-                    genai.configure(api_key=api_key)
-                    
-                    system_instruction = (
-                        "You are the BimariHaunter AI Outbreak Intelligence Agent, a professional medical advisor "
-                        "and disease prevention expert in Pakistan.\n"
-                        "You have direct access to tools to help answer user questions:\n"
-                        "1. query_outbreaks(city): check verified outbreak reports inside our Firestore database.\n"
-                        "2. query_web_search(query_str): run live web search queries to fetch real-time breaking news.\n\n"
-                        "Always prioritize checked reports. Provide precise, actionable advice with symptoms, "
-                        "precautionary advice, and local hospital recommendations. Keep your tone empathetic and clear."
+                    chat = model.start_chat(enable_automatic_function_calling=True)
+                    response = chat.send_message(prompt)
+                    ai_response_text = response.text
+                except Exception as flash_err:
+                    logger.warning("gemini-1.5-flash failed, falling back to gemini-1.0-pro", error=str(flash_err))
+                    model = genai.GenerativeModel(
+                        model_name="gemini-1.0-pro",
+                        tools=[query_outbreaks, query_web_search],
+                        generation_config={"temperature": 0.3}
                     )
-                    
-                    history_docs = messages_ref.order_by("timestamp", direction="DESCENDING").limit(5).stream()
-                    history_list = []
-                    for h in reversed(list(history_docs)):
-                        h_dict = h.to_dict()
-                        history_list.append(f"{h_dict['sender'].upper()}: {h_dict['text']}")
-                    history_context = "\n".join(history_list)
-                    
-                    prompt = (
-                        f"Conversation History:\n{history_context}\n\n"
-                        f"User Query: {msg_input.text}"
-                    )
-                    
-                    try:
-                        # Prioritize gemini-1.5-flash which is much faster and supports AQ keys
-                        logger.info("Initializing Google AI Studio with gemini-1.5-flash")
-                        model = genai.GenerativeModel(
-                            model_name="gemini-1.5-flash",
-                            tools=[query_outbreaks, query_web_search],
-                            generation_config={"temperature": 0.3},
-                            system_instruction=system_instruction
-                        )
-                        chat = model.start_chat(enable_automatic_function_calling=True)
-                        response = chat.send_message(prompt)
-                        ai_response_text = response.text
-                    except Exception as flash_err:
-                        logger.warning("gemini-1.5-flash failed, falling back to gemini-1.0-pro", error=str(flash_err))
-                        model = genai.GenerativeModel(
-                            model_name="gemini-1.0-pro",
-                            tools=[query_outbreaks, query_web_search],
-                            generation_config={"temperature": 0.3}
-                        )
-                        chat = model.start_chat(enable_automatic_function_calling=True)
-                        response = chat.send_message(prompt)
-                        ai_response_text = response.text
+                    chat = model.start_chat(enable_automatic_function_calling=True)
+                    response = chat.send_message(prompt)
+                    ai_response_text = response.text
                 
             # Save AI message to cloud database
             ai_msg_ref = messages_ref.document()

@@ -10,6 +10,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -58,10 +59,18 @@ fun ProfileScreen(
     // Dynamic groups from Firestore
     var userGroups by remember { mutableStateOf<List<Triple<String, String, String>>>(emptyList()) }
 
+    var errorMessage by remember { mutableStateOf<String?>(null) }
     val uid = currentUser?.uid
 
     LaunchedEffect(uid) {
-        if (uid == null) return@LaunchedEffect
+        if (uid == null) {
+            errorMessage = "Not authenticated. Please log in first."
+            reportsCount = 0
+            savedCount = 0
+            groupsCount = 0
+            return@LaunchedEffect
+        }
+        errorMessage = null
         val db = FirebaseFirestore.getInstance()
 
         // Count reports submitted by this user
@@ -70,7 +79,14 @@ fun ProfileScreen(
                 .whereEqualTo("user_id", uid)
                 .get().await()
             reportsCount = reportsSnap.size()
-        } catch (_: Exception) { reportsCount = 0 }
+        } catch (e: Exception) {
+            reportsCount = 0
+            if (e.message?.contains("permission", ignoreCase = true) == true || e.message?.contains("denied", ignoreCase = true) == true) {
+                errorMessage = "Premium Subscription Required: Direct reports access requires premium tier. Check credentials or upgrade."
+            } else {
+                errorMessage = "Failed to load reports: ${e.localizedMessage}"
+            }
+        }
 
         // Count saved articles
         try {
@@ -84,7 +100,16 @@ fun ProfileScreen(
                 val source = doc.getString("source") ?: "BimariHaunter"
                 Pair(title, source)
             }
-        } catch (_: Exception) { savedCount = 0 }
+        } catch (e: Exception) {
+            savedCount = 0
+            if (errorMessage == null) {
+                if (e.message?.contains("permission", ignoreCase = true) == true || e.message?.contains("denied", ignoreCase = true) == true) {
+                    errorMessage = "Premium Subscription Required: Saved articles lookup requires premium tier. Check credentials or upgrade."
+                } else {
+                    errorMessage = "Failed to load saved articles: ${e.localizedMessage}"
+                }
+            }
+        }
 
         // Count and load groups
         try {
@@ -101,7 +126,16 @@ fun ProfileScreen(
                     .ifEmpty { "G" }
                 Triple(name, ini, "$memberCount member${if (memberCount != 1) "s" else ""}")
             }
-        } catch (_: Exception) { groupsCount = 0 }
+        } catch (e: Exception) {
+            groupsCount = 0
+            if (errorMessage == null) {
+                if (e.message?.contains("permission", ignoreCase = true) == true || e.message?.contains("denied", ignoreCase = true) == true) {
+                    errorMessage = "Premium Subscription Required: Group insights listing requires premium tier. Check credentials or upgrade."
+                } else {
+                    errorMessage = "Failed to load groups: ${e.localizedMessage}"
+                }
+            }
+        }
     }
 
     Column(
@@ -118,6 +152,45 @@ fun ProfileScreen(
                 }
             }
         )
+
+        if (errorMessage != null) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = CharcoalGrey)
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Warning,
+                        contentDescription = "Warning",
+                        tint = EmberRed,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Column {
+                        Text(
+                            text = "Profile Warning / Access Alert",
+                            fontFamily = SpaceGroteskFamily,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            color = OffWhite
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = errorMessage ?: "",
+                            fontFamily = InterFamily,
+                            fontSize = 12.sp,
+                            color = MediumGrey
+                        )
+                    }
+                }
+            }
+        }
 
         Column(
             modifier = Modifier.padding(horizontal = 20.dp),

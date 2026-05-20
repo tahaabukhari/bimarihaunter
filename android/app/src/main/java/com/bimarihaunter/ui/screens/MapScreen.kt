@@ -43,6 +43,8 @@ import kotlin.math.pow
 fun MapScreen(viewModel: MapViewModel) {
     val context = LocalContext.current
     val markers by viewModel.mapMarkers.collectAsState()
+    val isSyncing by viewModel.isSyncing.collectAsState()
+    val syncError by viewModel.syncError.collectAsState()
     var hasLocationPermission by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(
@@ -165,95 +167,150 @@ fun MapScreen(viewModel: MapViewModel) {
                 .padding(16.dp)
                 .clip(RoundedCornerShape(24.dp))
                 .background(CharcoalGrey.copy(alpha = 0.97f))
-                .padding(16.dp)
+                .padding(16.dp),
+            horizontalAlignment = if (markers.isEmpty()) Alignment.CenterHorizontally else Alignment.Start
         ) {
-            // Header row
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            if (markers.isEmpty()) {
                 Text(
-                    text = "Live Outbreak Insights",
+                    text = "Sync Feed First",
                     fontFamily = SpaceGroteskFamily,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp,
-                    color = OffWhite
+                    fontSize = 18.sp,
+                    color = OffWhite,
+                    textAlign = TextAlign.Center
                 )
+                Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "${markers.size} reports",
+                    text = "Map markers are empty. Pull recent outbreak data to localize alerts.",
+                    color = MediumGrey,
                     fontFamily = InterFamily,
-                    fontSize = 12.sp,
-                    color = LimeGreen
+                    fontSize = 13.sp,
+                    lineHeight = 19.sp,
+                    textAlign = TextAlign.Center
                 )
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Real stat boxes from actual data
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                StatBox(
-                    value = insights.nearbyCount.toString(),
-                    label = "Nearby (25km)"
-                )
-                StatBox(
-                    value = insights.highSeverityCount.toString(),
-                    label = "High Severity"
-                )
-                StatBox(
-                    value = insights.uniqueDiseases.toString(),
-                    label = "Disease Types"
-                )
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Disease breakdown chips
-            if (insights.diseaseBreakdown.isNotEmpty()) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    insights.diseaseBreakdown.forEach { (disease, count) ->
-                        DiseaseChip(disease = disease, count = count)
+                Spacer(modifier = Modifier.height(16.dp))
+                if (isSyncing) {
+                    CircularProgressIndicator(
+                        color = LimeGreen,
+                        modifier = Modifier.size(24.dp)
+                    )
+                } else {
+                    Button(
+                        onClick = {
+                            viewModel.syncFeed(
+                                context = context,
+                                latitude = userLocation?.latitude,
+                                longitude = userLocation?.longitude
+                            )
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = LimeGreen,
+                            contentColor = MidnightBlack
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("Sync Live Outbreaks", fontWeight = FontWeight.Bold)
                     }
                 }
-                Spacer(modifier = Modifier.height(10.dp))
-            }
-
-            // Summary text from real data
-            Text(
-                text = insights.summary,
-                color = MediumGrey,
-                fontFamily = InterFamily,
-                fontSize = 13.sp,
-                lineHeight = 19.sp
-            )
-
-            if (insights.closestAlert != null) {
-                Spacer(modifier = Modifier.height(10.dp))
+                syncError?.let { err ->
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = err,
+                        color = EmberRed,
+                        fontSize = 12.sp,
+                        fontFamily = InterFamily,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            } else {
+                // Header row
                 Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        Icons.Default.Warning,
-                        contentDescription = null,
-                        tint = EmberRed,
-                        modifier = Modifier.size(14.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "Nearest: ${insights.closestAlert}",
-                        color = EmberRed,
+                        text = "Live Outbreak Insights",
+                        fontFamily = SpaceGroteskFamily,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp,
+                        color = OffWhite
+                    )
+                    Text(
+                        text = "${markers.size} reports",
                         fontFamily = InterFamily,
                         fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium
+                        color = LimeGreen
                     )
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Real stat boxes from actual data
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    StatBox(
+                        value = insights.nearbyCount.toString(),
+                        label = "Nearby (25km)"
+                    )
+                    StatBox(
+                        value = insights.highSeverityCount.toString(),
+                        label = "High Severity"
+                    )
+                    StatBox(
+                        value = insights.uniqueDiseases.toString(),
+                        label = "Disease Types"
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Disease breakdown chips
+                if (insights.diseaseBreakdown.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        insights.diseaseBreakdown.forEach { (disease, count) ->
+                            DiseaseChip(disease = disease, count = count)
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                }
+
+                // Summary text from real data
+                Text(
+                    text = insights.summary,
+                    color = MediumGrey,
+                    fontFamily = InterFamily,
+                    fontSize = 13.sp,
+                    lineHeight = 19.sp
+                )
+
+                if (insights.closestAlert != null) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.Warning,
+                            contentDescription = null,
+                            tint = EmberRed,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Nearest: ${insights.closestAlert}",
+                            color = EmberRed,
+                            fontFamily = InterFamily,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
                 }
             }
         }
