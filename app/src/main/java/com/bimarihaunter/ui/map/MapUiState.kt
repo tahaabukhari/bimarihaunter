@@ -1,11 +1,13 @@
 package com.bimarihaunter.ui.map
 
-import com.bimarihaunter.data.models.RegionData
+import com.bimarihaunter.data.models.OutbreakLocation
+import com.bimarihaunter.data.models.SummaryStats
 
 data class MapUiState(
     val isLoading: Boolean = false,
-    val regions: List<RegionData> = emptyList(),
-    val selectedRegion: RegionData? = null,
+    val outbreakLocations: List<OutbreakLocation> = emptyList(),
+    val summaryStats: SummaryStats? = null,
+    val selectedLocation: OutbreakLocation? = null,
     val searchQuery: String = "",
     val errorMessage: String? = null,
     val isRefreshing: Boolean = false,
