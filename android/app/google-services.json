@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "723264184490",
+    "project_id": "bimarihaunter",
+    "storage_bucket": "bimarihaunter.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:723264184490:android:409b5152e69c56e17830d3",
+        "android_client_info": {
+          "package_name": "com.example.bimarihaunter"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "723264184490-nmhfarqtek8pt7j92n184rvbj7avvitc.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.bimarihaunter",
+            "certificate_hash": "8e2e95e895a25488c4952263cb65454f6659b707"
+          }
+        },
+        {
+          "client_id": "723264184490-8vpac8phbuoscaisqer88m0fjdnd79la.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBGEIhOIQrKO2T2fdM7fo3xtPjCTs90KPg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "723264184490-8vpac8phbuoscaisqer88m0fjdnd79la.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

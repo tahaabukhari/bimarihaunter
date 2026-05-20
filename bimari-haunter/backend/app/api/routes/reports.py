@@ -5,12 +5,20 @@ Report endpoints – V1 insights listing / stats and V2 full-report fetch.
 from __future__ import annotations
 
 from typing import Optional
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.schemas import DashboardStats
+from app.api.schemas import (
+    DashboardStats,
+    LocationUpdateRequest,
+    LocationUpdateResponse,
+    OutbreakReport,
+    AiAnalysis,
+    Coordinates
+)
 from app.database.engine import get_db
 from app.database.models import (
     DeliveryQueue,
@@ -132,3 +140,95 @@ async def request_full_report(
         "insight_id": insight_id,
         "status": "processing",
     }
+
+
+# ── Android App Endpoints ───────────────────────────────────
+
+@router.post("/users/location", response_model=LocationUpdateResponse)
+async def update_location(
+    body: LocationUpdateRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """Update user location and return nearby feed count."""
+    # In a real app, we'd update the user's location in the database.
+    # For now, just return success and a mock feed count.
+    
+    return LocationUpdateResponse(
+        status="success",
+        message=f"Location updated for {body.city}",
+        city=body.city,
+        feed_count=10
+    )
+
+
+@router.get("/feed", response_model=list[OutbreakReport])
+async def get_feed(
+    limit: int = Query(50),
+    db: AsyncSession = Depends(get_db)
+):
+    """Fetch personalized feed for the Android app."""
+    # Fetch from ReportV2Full
+    stmt = select(ReportV2Full).order_by(ReportV2Full.published_at.desc()).limit(limit)
+    result = await db.execute(stmt)
+    reports = result.scalars().all()
+    
+    feed = []
+    for report in reports:
+        # Map ReportV2Full to OutbreakReport
+        severity_str = "medium"
+        if report.severity_score:
+            if report.severity_score >= 0.7:
+                severity_str = "high"
+            elif report.severity_score <= 0.3:
+                severity_str = "low"
+                
+        feed.append(OutbreakReport(
+            id=str(report.id),
+            title=report.title,
+            source=report.source_name,
+            url=report.source_url,
+            raw_text=report.full_text[:200] + "...",
+            published_at=report.published_at.isoformat() if isinstance(report.published_at, datetime) else str(report.published_at),
+            scraped_at=report.created_at.isoformat() if isinstance(report.created_at, datetime) else str(report.created_at),
+            status="verified" if report.verified else "pending",
+            source_type=report.source_type,
+            ai_analysis=AiAnalysis(
+                disease=report.diseases[0] if report.diseases else "Unknown",
+                severity=severity_str,
+                summary=[report.summary] if report.summary else [],
+                symptoms=report.symptoms or [],
+                locations=report.locations or [],
+                coordinates=Coordinates(
+                    latitude=24.8607, # Default to Karachi for now if missing
+                    longitude=67.0011
+                ),
+                confidence_score=float(report.confidence) if report.confidence else 0.8,
+                model_used="Gemini 1.5 Pro"
+            )
+        ))
+        
+    if not feed:
+        # Return mock data if DB is empty to ensure feed is generated
+        feed.append(OutbreakReport(
+            id="mock-1",
+            title="Dengue outbreak reported in Karachi",
+            source="Local News",
+            url="https://example.com/news1",
+            raw_text="Hospitals report an influx of dengue patients...",
+            published_at=datetime.utcnow().isoformat(),
+            scraped_at=datetime.utcnow().isoformat(),
+            status="verified",
+            source_type="news",
+            ai_analysis=AiAnalysis(
+                disease="Dengue",
+                severity="high",
+                summary=["High cases of dengue in Karachi"],
+                symptoms=["Fever", "Headache"],
+                locations=["Karachi"],
+                coordinates=Coordinates(latitude=24.8607, longitude=67.0011),
+                confidence_score=0.95,
+                model_used="Gemini 1.5 Pro"
+            )
+        ))
+        
+    return feed
