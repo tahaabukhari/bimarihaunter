@@ -58,7 +58,9 @@ data class ChatGroup(
     val lastMessage: String = "",
     val lastMessageTime: String = "",
     val category: String = "",
-    val severity: String = "INFO" // INFO, WARNING, CRITICAL
+    val severity: String = "INFO", // INFO, WARNING, CRITICAL
+    val participants: List<String> = emptyList(),
+    val names: Map<String, String> = emptyMap()
 )
 
 data class Message(
@@ -67,5 +69,12 @@ data class Message(
     val senderName: String = "",
     val text: String = "",
     val timestamp: Long = System.currentTimeMillis(),
-    val isSystem: Boolean = false
+    val isSystem: Boolean = false,
+    val edited: Boolean = false,
+    val deleted: Boolean = false,
+    val sharedPostId: String? = null,
+    val sharedPostTitle: String? = null,
+    val sharedPostDisease: String? = null,
+    val sharedPostSeverity: String? = null,
+    val sharedPostUrl: String? = null
 )

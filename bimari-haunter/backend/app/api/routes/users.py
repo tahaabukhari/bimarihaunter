@@ -1,15 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
 from typing import Dict, Any
 from google.cloud import firestore
-from datetime import datetime, timezone
-
-import structlog
 
 from app.services.firebase_auth import verify_firebase_token
 from app.database.firestore import db
-from app.api.schemas import UserLocationUpdate, UserRegistrationRequest
-
-logger = structlog.get_logger(__name__)
+from app.api.schemas import UserLocationUpdate
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -101,61 +96,4 @@ async def update_user_location(
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to update location/feed: {str(e)}")
-
-
-@router.post("/register")
-async def register_user(request: UserRegistrationRequest):
-    """
-    Register a new user in Firebase and initialize their preferences.
-    Called after Firebase Auth signup.
-    """
-    try:
-        user_data = {
-            "uid": request.uid,
-            "email": request.email,
-            "city": request.city,
-            "latitude": request.latitude,
-            "longitude": request.longitude,
-            "preferences": {
-                "diseases": [],
-                "alert_radius_km": 50,
-                "severity_threshold": "low"
-            },
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "last_scrape_timestamp": None,
-            "scrape_status": "pending"
-        }
-
-        db.collection("users").document(request.uid).set(user_data)
-
-        return {
-            "status": "success",
-            "message": f"User {request.uid} registered successfully",
-            "user_id": request.uid
-        }
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@router.post("/{uid}/preferences")
-async def update_user_preferences(uid: str, preferences: dict):
-    """
-    Update user's disease preferences and alert settings.
-    This triggers a new scrape job for the user.
-    """
-    try:
-        db.collection("users").document(uid).update({
-            "preferences": preferences,
-            "preferences_updated_at": datetime.now(timezone.utc).isoformat()
-        })
-
-        logger.info(f"Preferences updated for user {uid}. Next scrape will use new settings.")
-
-        return {
-            "status": "success",
-            "message": "Preferences updated",
-            "preferences": preferences
-        }
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
 
