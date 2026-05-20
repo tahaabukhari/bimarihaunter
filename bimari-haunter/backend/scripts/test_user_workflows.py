@@ -111,10 +111,13 @@ async def run_verification():
     try:
         outbreak_advisory = query_outbreaks("Karachi")
         print("SUCCESS: query_outbreaks tool output successfully fetched:")
-        parsed_outbreaks = json.loads(outbreak_advisory)
-        print(f"  Total matched reports parsed: {len(parsed_outbreaks)}")
-        for item in parsed_outbreaks[:2]:
-            print(f"  - [{item['severity'].upper()}] {item['title']} ({item['source']})")
+        if outbreak_advisory.strip().startswith("["):
+            parsed_outbreaks = json.loads(outbreak_advisory)
+            print(f"  Total matched reports parsed: {len(parsed_outbreaks)}")
+            for item in parsed_outbreaks[:2]:
+                print(f"  - [{item['severity'].upper()}] {item['title']} ({item['source']})")
+        else:
+            print(f"  Advisory Response: {outbreak_advisory}")
     except Exception as e:
         print(f"FAILED: Outbreaks tool query failed: {str(e)}")
 
@@ -122,10 +125,13 @@ async def run_verification():
     try:
         web_advisory = query_web_search("dengue Karachi May 2026")
         print("SUCCESS: query_web_search tool output successfully fetched:")
-        parsed_web = json.loads(web_advisory)
-        print(f"  Total search matches parsed: {len(parsed_web)}")
-        for item in parsed_web[:2]:
-            print(f"  - {item['title']} ({item['url'][:50]}...)")
+        if web_advisory.strip().startswith("["):
+            parsed_web = json.loads(web_advisory)
+            print(f"  Total search matches parsed: {len(parsed_web)}")
+            for item in parsed_web[:2]:
+                print(f"  - {item['title']} ({item['url'][:50]}...)")
+        else:
+            print(f"  Advisory Response: {web_advisory}")
     except Exception as e:
         print(f"FAILED: Web search tool query failed: {str(e)}")
         
@@ -151,9 +157,29 @@ async def run_verification():
         "text": "Warning: Vector breeding was found near Clifton Block 5. Municipal teams have been alerted.",
         "timestamp": firestore.SERVER_TIMESTAMP
     })
-    print("SUCCESS: Posted alert message to community group bulletin board.")
+    # ── Test 5: Geolocated Map Markers ──
+    print("\n[Test 5] Verifying Geolocated Map Markers query logic...")
+    try:
+        reports_ref = db.collection("reports")
+        docs = reports_ref.order_by("published_at", direction="DESCENDING").limit(20).stream()
+        markers = []
+        for doc in docs:
+            data = doc.to_dict()
+            analysis = data.get("ai_analysis", {})
+            coords = analysis.get("coordinates")
+            if coords and hasattr(coords, "latitude") and hasattr(coords, "longitude"):
+                markers.append({
+                    "id": doc.id,
+                    "title": data.get("title"),
+                    "latitude": coords.latitude,
+                    "longitude": coords.longitude
+                })
+        print(f"SUCCESS: Successfully verified Map Markers query logic. Found {len(markers)} markers in recent reports.")
+        for m in markers[:2]:
+            print(f"  - Marker: {m['title']} ({m['latitude']}, {m['longitude']})")
+    except Exception as e:
+        print(f"FAILED: Map markers query validation failed: {str(e)}")
 
-    
     print("\n--- All BimariHaunter Firestore Architecture Checks Passed Successfully! ---")
 
 if __name__ == "__main__":

@@ -55,10 +55,19 @@ async def update_user_location(
         query = (
             reports_ref
             .where("ai_analysis.locations", "array_contains", city_capitalized)
-            .order_by("published_at", direction="DESCENDING")
-            .limit(50)
+            .limit(100)
         )
-        matched_docs = query.stream()
+        matched_docs = list(query.stream())
+        
+        # Sort in memory to avoid composite index requirements
+        def get_pub_date(d):
+            dt = d.to_dict().get("published_at")
+            if isinstance(dt, datetime):
+                return dt
+            return datetime.min.replace(tzinfo=timezone.utc)
+            
+        matched_docs.sort(key=get_pub_date, reverse=True)
+        matched_docs = matched_docs[:50]
         
         feed_ref = user_ref.collection("feed")
         batch = db.batch()
