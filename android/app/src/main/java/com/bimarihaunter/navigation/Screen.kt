@@ -31,6 +31,10 @@ sealed class Screen(val route: String) {
     object GroupChat : Screen("group_chat/{groupId}") {
         fun createRoute(groupId: String) = "group_chat/$groupId"
     }
+    object DirectChat : Screen("direct_chat/{chatId}/{friendId}/{friendName}") {
+        fun createRoute(chatId: String, friendId: String, friendName: String) =
+            "direct_chat/$chatId/$friendId/$friendName"
+    }
     object CreateGroup : Screen("create_group")
     object AiChat : Screen("ai_chat")
 
