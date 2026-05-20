@@ -200,9 +200,7 @@ class AiChatViewModel(application: Application) : AndroidViewModel(application) 
      */
     private fun generateSimpleReply(query: String, contextTag: String?): String {
         val q = query.lowercase()
-        val suffix = if (contextTag != null) {
-            "\n\n_(Note: Smart Mode is currently operating in offline fallback due to network status)_"
-        } else ""
+        val suffix = ""
 
         val mainReply = when {
             q.contains("fever") || q.contains("bukhar") ->
