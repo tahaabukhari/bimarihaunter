@@ -27,6 +27,7 @@ import com.bimarihaunter.ui.viewmodel.AuthViewModel
 fun SettingsScreen(
     onNavigateBack: () -> Unit = {},
     onLogout: () -> Unit = {},
+    onNavigateToFeedPreferences: () -> Unit = {},
     authViewModel: AuthViewModel = viewModel()
 ) {
     var pushNotifications by remember { mutableStateOf(true) }
@@ -75,6 +76,27 @@ fun SettingsScreen(
                 SettingsDivider()
                 SettingsToggleRow(Icons.Default.Share, "Data Sharing",
                     dataSharing) { dataSharing = it }
+            }
+
+            // Feed
+            SettingsSection("Feed") {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onNavigateToFeedPreferences() }
+                        .padding(vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.DynamicFeed, null, tint = LimeGreen,
+                        modifier = Modifier.size(22.dp))
+                    Spacer(Modifier.width(14.dp))
+                    Text("Feed Preferences", color = OffWhite, fontFamily = InterFamily,
+                        fontSize = 15.sp, modifier = Modifier.weight(1f))
+                    Text("Topics & Tags", color = MediumGrey, fontFamily = InterFamily, fontSize = 13.sp)
+                    Spacer(Modifier.width(4.dp))
+                    Icon(Icons.Default.ChevronRight, null, tint = MediumGrey,
+                        modifier = Modifier.size(20.dp))
+                }
             }
 
             // Account

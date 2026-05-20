@@ -126,7 +126,8 @@ fun BimarihaunterApp() {
                         onNavigateToLogin = { navController.popBackStack() },
                         onNavigateBack = { navController.popBackStack() },
                         onCreateAccount = {
-                            navController.navigate(Screen.HomeFeed.route) {
+                            // After sign-up, show the tag picker before the main feed
+                            navController.navigate(Screen.FeedPreferences.createRoute(true)) {
                                 popUpTo(Screen.Login.route) { inclusive = true }
                             }
                         }
@@ -398,11 +399,35 @@ fun BimarihaunterApp() {
                 composable(Screen.Settings.route) {
                     SettingsScreen(
                         onNavigateBack = { navController.popBackStack() },
+                        onNavigateToFeedPreferences = {
+                            navController.navigate(Screen.FeedPreferences.createRoute(false))
+                        },
                         onLogout = {
                             navController.navigate(Screen.Login.route) {
                                 popUpTo(0) { inclusive = true }
                             }
                         }
+                    )
+                }
+
+                // ===== FEED PREFERENCES =====
+                composable(
+                    Screen.FeedPreferences.route,
+                    arguments = listOf(navArgument("isFirstTime") { type = NavType.BoolType })
+                ) { backStackEntry ->
+                    val isFirstTime = backStackEntry.arguments?.getBoolean("isFirstTime") ?: false
+                    FeedPreferencesScreen(
+                        isFirstTime = isFirstTime,
+                        onSaved = {
+                            if (isFirstTime) {
+                                navController.navigate(Screen.HomeFeed.route) {
+                                    popUpTo(0) { inclusive = true }
+                                }
+                            } else {
+                                navController.popBackStack()
+                            }
+                        },
+                        onNavigateBack = { navController.popBackStack() }
                     )
                 }
 

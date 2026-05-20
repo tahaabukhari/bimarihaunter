@@ -55,6 +55,13 @@ interface ApiService {
     // List blocked users
     @GET("/api/v1/users/blocked")
     suspend fun getBlockedUsers(): BlockedListResponse
+
+    // Update user feed tag preferences
+    @POST("/api/v1/users/{uid}/preferences")
+    suspend fun updatePreferences(
+        @Path("uid") uid: String,
+        @Body body: UserPreferencesRequest
+    ): SimpleResponse
 }
 
 data class JobTriggerResponse(
@@ -139,6 +146,15 @@ data class BlockedListResponse(
 data class SimpleResponse(
     val status: String,
     val message: String
+)
+
+data class UserPreferencesRequest(
+    val diseases: List<String>,
+    val feed_tags: List<String>,
+    val city: String,
+    val latitude: Double,
+    val longitude: Double,
+    val radius: Int = 50
 )
 
 data class UserRegisterRequest(

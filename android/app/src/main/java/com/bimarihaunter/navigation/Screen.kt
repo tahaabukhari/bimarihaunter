@@ -43,6 +43,11 @@ sealed class Screen(val route: String) {
             "user_direct_chat/$userId/${java.net.URLEncoder.encode(userName, "UTF-8")}"
     }
 
+    // Feed Preferences (tag selection)
+    object FeedPreferences : Screen("feed_preferences/{isFirstTime}") {
+        fun createRoute(isFirstTime: Boolean) = "feed_preferences/$isFirstTime"
+    }
+
     // Profile
     object Profile : Screen("profile")
     object Settings : Screen("settings")
