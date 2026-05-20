@@ -16,8 +16,16 @@ class FeedViewModel(private val repository: FeedRepository) : ViewModel() {
     
     private val _syncStatus = MutableStateFlow<SyncStatus>(SyncStatus.Idle)
     val syncStatus: StateFlow<SyncStatus> = _syncStatus
+
+    // Cache the resolved city and GPS coordinates for refresh triggers
+    private var lastCity: String = "Karachi"
+    private var lastLatitude: Double = 24.8607
+    private var lastLongitude: Double = 67.0011
     
     fun syncFeed(city: String, latitude: Double, longitude: Double) {
+        lastCity = city
+        lastLatitude = latitude
+        lastLongitude = longitude
         viewModelScope.launch {
             _syncStatus.value = SyncStatus.Loading
             try {
@@ -28,6 +36,10 @@ class FeedViewModel(private val repository: FeedRepository) : ViewModel() {
                 _syncStatus.value = SyncStatus.Error(e.message ?: "Unknown error")
             }
         }
+    }
+
+    fun refreshFeed() {
+        syncFeed(lastCity, lastLatitude, lastLongitude)
     }
     
     sealed class SyncStatus {

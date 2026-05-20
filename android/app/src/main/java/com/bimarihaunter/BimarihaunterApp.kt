@@ -148,8 +148,88 @@ fun BimarihaunterApp() {
                     val factory = com.bimarihaunter.ui.viewmodel.FeedViewModelFactory(repository)
                     val feedViewModel: com.bimarihaunter.ui.viewmodel.FeedViewModel = androidx.lifecycle.viewmodel.compose.viewModel(factory = factory)
                     
+                    val permissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+                        contract = androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()
+                    ) { permissions ->
+                        val fineGranted = permissions[android.Manifest.permission.ACCESS_FINE_LOCATION] == true
+                        val coarseGranted = permissions[android.Manifest.permission.ACCESS_COARSE_LOCATION] == true
+                        
+                        if (fineGranted || coarseGranted) {
+                            try {
+                                val locationClient = com.google.android.gms.location.LocationServices.getFusedLocationProviderClient(context)
+                                locationClient.lastLocation.addOnSuccessListener { location ->
+                                    if (location != null) {
+                                        val geocoder = android.location.Geocoder(context, java.util.Locale.getDefault())
+                                        var cityName = "Karachi"
+                                        try {
+                                            @Suppress("DEPRECATION")
+                                            val addresses = geocoder.getFromLocation(location.latitude, location.longitude, 1)
+                                            if (!addresses.isNullOrEmpty()) {
+                                                cityName = addresses[0].locality ?: addresses[0].subAdminArea ?: addresses[0].adminArea ?: "Karachi"
+                                            }
+                                        } catch (e: Exception) {
+                                            // Use default city
+                                        }
+                                        feedViewModel.syncFeed(cityName, location.latitude, location.longitude)
+                                    } else {
+                                        feedViewModel.syncFeed("Karachi", 24.8607, 67.0011)
+                                    }
+                                }.addOnFailureListener {
+                                    feedViewModel.syncFeed("Karachi", 24.8607, 67.0011)
+                                }
+                            } catch (e: SecurityException) {
+                                feedViewModel.syncFeed("Karachi", 24.8607, 67.0011)
+                            }
+                        } else {
+                            feedViewModel.syncFeed("Karachi", 24.8607, 67.0011)
+                        }
+                    }
+                    
                     LaunchedEffect(Unit) {
-                        feedViewModel.syncFeed("Karachi", 24.8607, 67.0011)
+                        val finePermission = androidx.core.content.ContextCompat.checkSelfPermission(
+                            context,
+                            android.Manifest.permission.ACCESS_FINE_LOCATION
+                        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                        
+                        val coarsePermission = androidx.core.content.ContextCompat.checkSelfPermission(
+                            context,
+                            android.Manifest.permission.ACCESS_COARSE_LOCATION
+                        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                        
+                        if (finePermission || coarsePermission) {
+                            try {
+                                val locationClient = com.google.android.gms.location.LocationServices.getFusedLocationProviderClient(context)
+                                locationClient.lastLocation.addOnSuccessListener { location ->
+                                    if (location != null) {
+                                        val geocoder = android.location.Geocoder(context, java.util.Locale.getDefault())
+                                        var cityName = "Karachi"
+                                        try {
+                                            @Suppress("DEPRECATION")
+                                            val addresses = geocoder.getFromLocation(location.latitude, location.longitude, 1)
+                                            if (!addresses.isNullOrEmpty()) {
+                                                cityName = addresses[0].locality ?: addresses[0].subAdminArea ?: addresses[0].adminArea ?: "Karachi"
+                                            }
+                                        } catch (e: Exception) {
+                                            // Use default city
+                                        }
+                                        feedViewModel.syncFeed(cityName, location.latitude, location.longitude)
+                                    } else {
+                                        feedViewModel.syncFeed("Karachi", 24.8607, 67.0011)
+                                    }
+                                }.addOnFailureListener {
+                                    feedViewModel.syncFeed("Karachi", 24.8607, 67.0011)
+                                }
+                            } catch (e: SecurityException) {
+                                feedViewModel.syncFeed("Karachi", 24.8607, 67.0011)
+                            }
+                        } else {
+                            permissionLauncher.launch(
+                                arrayOf(
+                                    android.Manifest.permission.ACCESS_FINE_LOCATION,
+                                    android.Manifest.permission.ACCESS_COARSE_LOCATION
+                                )
+                            )
+                        }
                     }
                     
                     FeedScreen(viewModel = feedViewModel)

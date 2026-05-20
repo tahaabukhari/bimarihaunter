@@ -19,7 +19,7 @@ class SLMManager(private val context: Context, private val database: Bimarihaunt
             llmInference = LlmInference.createFromOptions(
                 context,
                 LlmInference.LlmInferenceOptions.builder()
-                    .setModelPath("file:///android_asset/models/phi-3.5-mini-instruct.tflite")
+                    .setModelPath("file:///android_asset/models/llama-3.2-1b-instruct.task")
                     .build()
             )
             Timber.d("SLM initialized successfully")

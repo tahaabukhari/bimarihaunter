@@ -8,6 +8,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.GeoPoint
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.SetOptions
+import com.bimarihaunter.network.RetrofitClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.tasks.await
@@ -33,6 +34,14 @@ class FeedRepository(private val database: BimarihaunterDatabase) {
         }
 
         try {
+            // Trigger backend scraper background job first
+            try {
+                RetrofitClient.apiService.triggerJob()
+                Timber.d("Backend scraper triggered successfully during sync.")
+            } catch (e: Exception) {
+                Timber.w(e, "Failed to trigger backend scraper, continuing with sync...")
+            }
+
             updateUserLocation(uid, city, latitude, longitude)
 
             var entities = fetchUserFeed(uid)

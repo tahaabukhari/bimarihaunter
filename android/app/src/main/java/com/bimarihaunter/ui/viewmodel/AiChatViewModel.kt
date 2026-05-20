@@ -6,7 +6,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.bimarihaunter.ai.SLMManager
 import com.bimarihaunter.db.BimarihaunterDatabase
-import com.bimarihaunter.network.GeminiClient
+import com.bimarihaunter.network.RetrofitClient
+import com.bimarihaunter.network.ChatMessageRequest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -114,10 +115,20 @@ class AiChatViewModel(application: Application) : AndroidViewModel(application) 
         try {
             val contextText = slmManager.getContextSummary()
             val prompt = buildGeminiPrompt(userQuery, contextText)
-            GeminiClient.generateReply(prompt)
+            
+            val chatId = "default_chat_session" // Auto-created on the backend if missing
+            val requestBody = ChatMessageRequest(
+                text = prompt
+            )
+            val response = RetrofitClient.apiService.sendMessage(
+                chatId = chatId,
+                mode = "smart", // Runs the server-side Gemini Agentic smart workflow
+                body = requestBody
+            )
+            response.response
         } catch (t: Throwable) {
-            Log.w(TAG, "Gemini API call failed, falling back to offline SLM", t)
-            generateOfflineReply(userQuery)
+            Log.w(TAG, "Backend Smart Mode call failed; falling back to local SLM", t)
+            generateOfflineReply(userQuery) // Fallback to offline on-device SLM
         }
     }
 

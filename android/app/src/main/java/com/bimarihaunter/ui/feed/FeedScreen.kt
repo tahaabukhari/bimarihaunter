@@ -110,7 +110,7 @@ fun FeedScreen(
                     )
                 }
                 is FeedViewModel.SyncStatus.Error -> {
-                    IconButton(onClick = { viewModel.syncFeed("Karachi", 24.8607, 67.0011) }) {
+                    IconButton(onClick = { viewModel.refreshFeed() }) {
                         Icon(
                             imageVector = Icons.Default.Refresh,
                             contentDescription = "Retry Sync",
@@ -123,7 +123,7 @@ fun FeedScreen(
                         targetValue = if (syncStatus is FeedViewModel.SyncStatus.Loading) 360f else 0f,
                         animationSpec = tween(durationMillis = 600)
                     )
-                    IconButton(onClick = { viewModel.syncFeed("Karachi", 24.8607, 67.0011) }) {
+                    IconButton(onClick = { viewModel.refreshFeed() }) {
                         Icon(
                             imageVector = Icons.Default.Refresh,
                             contentDescription = "Sync Feed",
