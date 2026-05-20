@@ -1,0 +1,19 @@
+FROM mcr.microsoft.com/playwright/python:v1.41.0-jammy
+
+WORKDIR /app
+
+# Install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application code
+COPY . .
+
+# Ensure Playwright browsers are installed
+RUN playwright install chromium
+
+ENV PYTHONUNBUFFERED=1
+ENV BACKEND_URL=
+
+# Run scraper scheduler (recurring)
+CMD ["python", "bimarihaunter_scraper_optimized.py", "--schedule"]

@@ -161,6 +161,18 @@ class LocationUpdateResponse(BaseModel):
     city: str
     feed_count: int
 
+
+# ── User registration / preferences ─────────────────────────
+
+class UserRegistrationRequest(BaseModel):
+    uid: str
+    email: str
+    city: str
+    latitude: float
+    longitude: float
+
+
+
 class Coordinates(BaseModel):
     latitude: float
     longitude: float
