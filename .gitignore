@@ -23,3 +23,12 @@ classifier/app/model/*.pkl
 
 # Misc
 *.log
+
+# Firebase & Credentials
+*.json
+!android/google-services.json
+
+# Temporary files
+ddg_debug.html
+tracked_py.txt
+

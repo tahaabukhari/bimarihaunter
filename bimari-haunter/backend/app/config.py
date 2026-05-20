@@ -7,6 +7,9 @@ from __future__ import annotations
 
 from typing import Optional
 
+from dotenv import load_dotenv
+load_dotenv()
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -18,6 +21,9 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=False,
     )
+
+    # ── Gemini / AI Studio ──────────────────────────────────
+    gemini_api_key: str = ""
 
     # ── Database ────────────────────────────────────────────
     database_url: str = "postgresql+asyncpg://user:pass@localhost/bimari_haunter"
