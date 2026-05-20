@@ -3,6 +3,8 @@ package com.bimarihaunter.ui.screens.chat
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -151,7 +153,10 @@ fun AiChatScreen(
                         if (msg.quickReplies.isNotEmpty()) {
                             Spacer(Modifier.height(8.dp))
                             Row(
-                                modifier = Modifier.padding(start = 36.dp),
+                                modifier = Modifier
+                                    .padding(start = 36.dp)
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 msg.quickReplies.forEach { reply ->
@@ -166,7 +171,8 @@ fun AiChatScreen(
                                             .clickable {
                                                 messageText = reply
                                             }
-                                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                                        maxLines = 1
                                     )
                                 }
                             }
