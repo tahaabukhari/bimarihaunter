@@ -33,6 +33,11 @@ sealed class Screen(val route: String) {
     }
     object CreateGroup : Screen("create_group")
     object AiChat : Screen("ai_chat")
+    object AddFriends : Screen("add_friends")
+    object UserDirectChat : Screen("user_direct_chat/{userId}/{userName}") {
+        fun createRoute(userId: String, userName: String) =
+            "user_direct_chat/$userId/${java.net.URLEncoder.encode(userName, "UTF-8")}"
+    }
 
     // Profile
     object Profile : Screen("profile")

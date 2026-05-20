@@ -42,7 +42,7 @@ fun AiChatScreen(
 
     Column(modifier = Modifier.fillMaxSize().background(MidnightBlack).navigationBarsPadding()) {
         BimarihaunterTopAppBar(
-            title = "Bimarihaunter AI",
+            title = "Haunter AI",
             showBackArrow = true,
             onBackClick = onNavigateBack,
             actions = {
@@ -53,7 +53,7 @@ fun AiChatScreen(
         )
 
         Text(
-            "Health & Prevention Assistant",
+            "🎃 Health & Prevention Assistant · Powered by Gemini",
             color = MediumGrey,
             fontSize = 12.sp,
             fontFamily = InterFamily,

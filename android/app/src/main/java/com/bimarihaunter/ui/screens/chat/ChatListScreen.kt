@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -32,6 +33,7 @@ fun ChatListScreen(
     onNavigateToGroupChat: (String) -> Unit = {},
     onNavigateToAiChat: () -> Unit = {},
     onNavigateToCreateGroup: () -> Unit = {},
+    onNavigateToAddFriends: () -> Unit = {},
     chatViewModel: ChatViewModel = viewModel()
 ) {
     var selectedChip by remember { mutableStateOf("All") }
@@ -50,6 +52,9 @@ fun ChatListScreen(
             BimarihaunterTopAppBar(
                 title = "Community",
                 actions = {
+                    IconButton(onClick = onNavigateToAddFriends) {
+                        Icon(Icons.Default.PersonAdd, "Add Friends", tint = OffWhite)
+                    }
                     IconButton(onClick = onNavigateToCreateGroup) {
                         Icon(Icons.Default.Edit, "Compose", tint = OffWhite)
                     }
