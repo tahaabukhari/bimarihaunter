@@ -119,4 +119,7 @@ dependencies {
 
     // Coroutines Play Services (.await() for Firebase Tasks)
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.8.1")
+
+    // ZXing — QR code generation (pure Java, no camera permission needed for generation only)
+    implementation("com.google.zxing:core:3.5.3")
 }

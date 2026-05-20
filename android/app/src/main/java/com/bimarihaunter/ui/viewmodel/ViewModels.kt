@@ -37,8 +37,8 @@ class ChatViewModel() : ViewModel() {
     private val _messages = MutableStateFlow<List<Message>>(emptyList())
     val messages: StateFlow<List<Message>> = _messages.asStateFlow()
 
-    private val _friends = MutableStateFlow<List<com.bimarihaunter.network.FriendInfo>>(emptyList())
-    val friends: StateFlow<List<com.bimarihaunter.network.FriendInfo>> = _friends.asStateFlow()
+    private val _friends = MutableStateFlow<List<User>>(emptyList())
+    val friends: StateFlow<List<User>> = _friends.asStateFlow()
 
     private val _blockedUsers = MutableStateFlow<List<String>>(emptyList())
     val blockedUsers: StateFlow<List<String>> = _blockedUsers.asStateFlow()

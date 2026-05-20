@@ -400,7 +400,7 @@ fun TabButton(
 fun UserSearchDialog(
     onDismiss: () -> Unit,
     viewModel: ChatViewModel,
-    friendsList: List<com.bimarihaunter.network.FriendInfo>,
+    friendsList: List<com.bimarihaunter.data.model.User>,
     blockedList: List<String>
 ) {
     var searchQuery by remember { mutableStateOf("") }

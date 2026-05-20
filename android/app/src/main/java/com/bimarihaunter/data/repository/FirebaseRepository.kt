@@ -1,6 +1,7 @@
 package com.bimarihaunter.data.repository
 
 import com.bimarihaunter.data.model.*
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import kotlinx.coroutines.channels.awaitClose
@@ -23,7 +24,8 @@ class FirebaseRepository {
         val listener = db.collection("news")
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
-                    close(error)
+                    Timber.e(error, "getNews failed — emitting empty list")
+                    trySend(emptyList())
                     return@addSnapshotListener
                 }
                 val articles = snapshot?.toObjects(NewsArticle::class.java) ?: emptyList()
@@ -37,7 +39,8 @@ class FirebaseRepository {
         val listener = db.collection("outbreaks")
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
-                    close(error)
+                    Timber.e(error, "getOutbreaks failed — emitting empty list")
+                    trySend(emptyList())
                     return@addSnapshotListener
                 }
                 val points = snapshot?.toObjects(OutbreakPoint::class.java) ?: emptyList()
@@ -51,7 +54,8 @@ class FirebaseRepository {
         val listener = db.collection("alerts")
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
-                    close(error)
+                    Timber.e(error, "getAlerts failed — emitting empty list")
+                    trySend(emptyList())
                     return@addSnapshotListener
                 }
                 val alerts = snapshot?.toObjects(AlertData::class.java) ?: emptyList()
@@ -65,7 +69,8 @@ class FirebaseRepository {
         val listener = db.collection("chats")
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
-                    close(error)
+                    Timber.e(error, "getChatGroups failed — emitting empty list")
+                    trySend(emptyList())
                     return@addSnapshotListener
                 }
                 val groups = snapshot?.toObjects(ChatGroup::class.java) ?: emptyList()
@@ -81,7 +86,8 @@ class FirebaseRepository {
             .orderBy("timestamp", Query.Direction.ASCENDING)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
-                    close(error)
+                    Timber.e(error, "getMessages failed — emitting empty list")
+                    trySend(emptyList())
                     return@addSnapshotListener
                 }
                 val messages = snapshot?.toObjects(Message::class.java) ?: emptyList()
@@ -155,13 +161,17 @@ class FirebaseRepository {
 
     // --- Direct Chats & Messaging Extension ---
 
-    // Real-time Flow for Direct Chats
+    // Real-time Flow for Direct Chats.
+    // NOTE: This query requires a Firestore composite index on (participants ARRAY_CONTAINS).
+    // If the index is missing Firestore emits FAILED_PRECONDITION — we catch it and emit
+    // an empty list so the screen never crashes. Create the index from the Firestore console.
     fun getDirectChats(currentUid: String): Flow<List<ChatGroup>> = callbackFlow {
         val listener = db.collection("direct_chats")
             .whereArrayContains("participants", currentUid)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
-                    close(error)
+                    Timber.e(error, "getDirectChats failed (missing index?) — emitting empty list")
+                    trySend(emptyList())
                     return@addSnapshotListener
                 }
                 val chats = snapshot?.toObjects(ChatGroup::class.java) ?: emptyList()
@@ -177,7 +187,8 @@ class FirebaseRepository {
             .orderBy("timestamp", Query.Direction.ASCENDING)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
-                    close(error)
+                    Timber.e(error, "getDirectMessages failed — emitting empty list")
+                    trySend(emptyList())
                     return@addSnapshotListener
                 }
                 val messages = snapshot?.toObjects(Message::class.java) ?: emptyList()
@@ -261,36 +272,83 @@ class FirebaseRepository {
         ))
     }
 
-    // --- Friends & Blocking API REST Wrappers ---
+    // --- Friends & Social — Firestore-native (no backend dependency) ---
 
+    // Search users by name prefix directly in Firestore.
+    // Falls back to empty list on any error (e.g. missing index).
     suspend fun searchUsers(query: String): List<User> {
+        if (query.isBlank()) return emptyList()
+        val currentUid = FirebaseAuth.getInstance().currentUser?.uid ?: ""
         return try {
-            RetrofitClient.apiService.searchUsers(query).users
+            val lower = query.lowercase()
+            val snap = db.collection("users")
+                .orderBy("name")
+                .startAt(lower)
+                .endAt(lower + "\uF8FF")
+                .limit(20)
+                .get().await()
+            snap.documents
+                .mapNotNull { it.toObject(User::class.java) }
+                .filter { it.uid != currentUid }
         } catch (e: Exception) {
+            Timber.e(e, "searchUsers failed")
             emptyList()
         }
     }
 
+    // Write a bi-directional friend link directly in Firestore.
     suspend fun addFriend(friendId: String): Boolean {
+        val currentUid = FirebaseAuth.getInstance().currentUser?.uid ?: return false
         return try {
-            RetrofitClient.apiService.addFriend(friendId).status == "success"
+            val now = System.currentTimeMillis()
+            db.collection("users").document(currentUid)
+                .collection("friends").document(friendId)
+                .set(mapOf("since" to now)).await()
+            db.collection("users").document(friendId)
+                .collection("friends").document(currentUid)
+                .set(mapOf("since" to now)).await()
+            true
         } catch (e: Exception) {
+            Timber.e(e, "addFriend failed")
             false
         }
     }
 
+    // Remove the bi-directional friend link from Firestore.
     suspend fun removeFriend(friendId: String): Boolean {
+        val currentUid = FirebaseAuth.getInstance().currentUser?.uid ?: return false
         return try {
-            RetrofitClient.apiService.removeFriend(friendId).status == "success"
+            db.collection("users").document(currentUid)
+                .collection("friends").document(friendId)
+                .delete().await()
+            db.collection("users").document(friendId)
+                .collection("friends").document(currentUid)
+                .delete().await()
+            true
         } catch (e: Exception) {
+            Timber.e(e, "removeFriend failed")
             false
         }
     }
 
-    suspend fun getFriends(): List<com.bimarihaunter.network.FriendInfo> {
+    // Load friends list from Firestore subcollection, returning full User profiles.
+    suspend fun getFriends(): List<User> {
+        val currentUid = FirebaseAuth.getInstance().currentUser?.uid ?: return emptyList()
         return try {
-            RetrofitClient.apiService.getFriends().friends
+            val snap = db.collection("users").document(currentUid)
+                .collection("friends").get().await()
+            val friendUids = snap.documents.map { it.id }
+            if (friendUids.isEmpty()) return emptyList()
+            val users = mutableListOf<User>()
+            friendUids.chunked(10).forEach { chunk ->
+                val usersSnap = db.collection("users")
+                    .whereIn("uid", chunk)
+                    .get().await()
+                users += usersSnap.documents.mapNotNull { it.toObject(User::class.java) }
+            }
+            users
         } catch (e: Exception) {
+            Timber.e(e, "getFriends failed")
             emptyList()
         }
     }
