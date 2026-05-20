@@ -465,32 +465,43 @@ class ScrapeScheduler:
         Clones a newly analyzed report to the personalized feed of all users
         whose live_location.city matches one of the report's locations.
 
-        The fan-out uses ai_analysis.locations (list of capitalized city names).
-        FeedRepository.documentToEntity reads ai_analysis.locations, so the
-        document shape written here must match exactly.
+        Special case: if the only location is 'Pakistan' (national story), the
+        report is written to EVERY registered user's feed so no one misses it.
         """
         try:
             ai = report_data.get("ai_analysis", {})
             locations = ai.get("locations", [])
             if not locations:
-                # Fall back to Pakistan-wide fan-out
                 locations = ["Pakistan"]
 
-            resolved_cities = [loc.strip().capitalize() for loc in locations if loc.strip()]
+            # Normalize: title-case each city for Firestore IN query
+            resolved_cities = [loc.strip().title() for loc in locations if loc.strip()]
             resolved_cities = resolved_cities[:10]  # Firestore IN limit
-
             if not resolved_cities:
                 return
 
             users_ref = db.collection("users")
+            report_id = report_data.get("id", "")
+
+            # National story → fan out to all users (no city filter)
+            is_national = resolved_cities == ["Pakistan"]
+            if is_national:
+                all_users = users_ref.stream()
+                for user_doc in all_users:
+                    user_id = user_doc.id
+                    user_feed_ref = db.collection("users").document(user_id).collection("feed")
+                    user_feed_ref.document(report_id).set(report_data)
+                logger.info("report_fan_out_national", report_id=report_id)
+                return
+
+            # City-specific story → match live_location.city
             query = users_ref.where("live_location.city", "in", resolved_cities)
-            matching_users = query.stream()
+            matching_users = list(query.stream())
 
             for user_doc in matching_users:
                 user_id = user_doc.id
                 user_feed_ref = db.collection("users").document(user_id).collection("feed")
-                user_feed_ref.document(report_data["id"]).set(report_data)
-
+                user_feed_ref.document(report_id).set(report_data)
                 # Enforce 50-item FIFO cap
                 current_feed_docs = user_feed_ref.order_by(
                     "published_at", direction="DESCENDING"
@@ -500,8 +511,9 @@ class ScrapeScheduler:
                         user_feed_ref.document(f_doc.id).delete()
 
             logger.info("report_fan_out_complete",
-                        report_id=report_data.get("id"),
-                        matched_cities=resolved_cities)
+                        report_id=report_id,
+                        matched_cities=resolved_cities,
+                        users_reached=len(matching_users))
         except Exception as e:
             logger.error("report_fan_out_failed",
                          error=str(e),

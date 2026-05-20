@@ -1,8 +1,10 @@
 package com.bimarihaunter.data.repository
 
 import com.bimarihaunter.data.model.*
+import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.GeoPoint
 import com.google.firebase.firestore.Query
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -20,16 +22,80 @@ class FirebaseRepository {
     }
 
     // Real-time Flow for News
+    // Reads from the 'reports' collection written by the RSS scraper.
+    // Falls back to the legacy 'news' seed collection if reports is empty.
     fun getNews(): Flow<List<NewsArticle>> = callbackFlow {
-        val listener = db.collection("news")
+        val uid = FirebaseAuth.getInstance().currentUser?.uid
+
+        // Primary: user-personalised feed subcollection
+        val collectionRef = if (!uid.isNullOrBlank())
+            db.collection("users").document(uid).collection("feed")
+        else
+            db.collection("reports")
+
+        val listener = collectionRef
+            .orderBy("published_at", Query.Direction.DESCENDING)
+            .limit(50)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
-                    Timber.e(error, "getNews failed — emitting empty list")
+                    Timber.e(error, "getNews (reports) failed — emitting empty list")
                     trySend(emptyList())
                     return@addSnapshotListener
                 }
-                val articles = snapshot?.toObjects(NewsArticle::class.java) ?: emptyList()
-                trySend(articles)
+                val docs = snapshot?.documents ?: emptyList()
+                val articles = docs.mapNotNull { doc ->
+                    val data = doc.data ?: return@mapNotNull null
+                    val title = data["title"] as? String ?: return@mapNotNull null
+                    val source = data["source"] as? String ?: "BimariHaunter"
+                    val url = data["url"] as? String ?: ""
+                    val rawText = data["raw_text"] as? String ?: ""
+                    val ai = data["ai_analysis"] as? Map<*, *>
+                    val disease = (ai?.get("disease") as? String ?: "Health").replaceFirstChar { it.uppercase() }
+                    val severityRaw = (ai?.get("severity") as? String ?: "medium").lowercase()
+                    val severity = when (severityRaw) {
+                        "critical", "high" -> "CRITICAL"
+                        "medium", "moderate" -> "WARNING"
+                        else -> "INFO"
+                    }
+                    val locations = (ai?.get("locations") as? List<*>)
+                        ?.mapNotNull { it as? String } ?: emptyList()
+                    val location = locations.firstOrNull() ?: "Pakistan"
+                    val publishedAt = when (val v = data["published_at"]) {
+                        is com.google.firebase.Timestamp -> {
+                            val ms = v.toDate().time
+                            val diff = System.currentTimeMillis() - ms
+                            when {
+                                diff < 3_600_000 -> "${diff / 60_000}m ago"
+                                diff < 86_400_000 -> "${diff / 3_600_000}h ago"
+                                else -> "${diff / 86_400_000}d ago"
+                            }
+                        }
+                        is String -> v
+                        else -> ""
+                    }
+                    NewsArticle(
+                        id = doc.id,
+                        category = disease,
+                        source = source,
+                        timestamp = publishedAt,
+                        title = title,
+                        content = rawText.take(200),
+                        location = location,
+                        severity = severity
+                    )
+                }
+                // If the reports collection has data use it; otherwise fall back to seed
+                if (articles.isNotEmpty()) {
+                    trySend(articles)
+                } else {
+                    // Fallback: read legacy 'news' seed collection
+                    db.collection("news").get().addOnSuccessListener { fallback ->
+                        val fallbackArticles = fallback.toObjects(NewsArticle::class.java)
+                        trySend(fallbackArticles)
+                    }.addOnFailureListener {
+                        trySend(emptyList())
+                    }
+                }
             }
         awaitClose { listener.remove() }
     }
