@@ -33,9 +33,12 @@ jobs:
       - name: Build Debug APK
         run: cd android && ./gradlew assembleDebug --no-daemon
 
+      - name: Copy APK to root level
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk bimari-haunter.apk
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: bimarihaunter-debug-${{ github.sha }}
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: bimari-haunter
+          path: bimari-haunter.apk
           retention-days: 14
