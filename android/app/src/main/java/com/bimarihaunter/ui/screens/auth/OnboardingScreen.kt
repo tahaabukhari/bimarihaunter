@@ -38,17 +38,17 @@ fun OnboardingScreen(
 ) {
     val pages = listOf(
         OnboardingPage(
-            imageRes = R.drawable.ghost_alert,
+            imageRes = R.drawable.onboarding_card_1_track_v2,
             title = "Track Outbreaks",
             description = "Know what's spreading in your area before it reaches you."
         ),
         OnboardingPage(
-            imageRes = R.drawable.ghost_waving,
+            imageRes = R.drawable.onboarding_card_2_simple,
             title = "Stay Alert",
             description = "Real-time notifications for health and disaster alerts near you."
         ),
         OnboardingPage(
-            imageRes = R.drawable.ghost_happy,
+            imageRes = R.drawable.onboarding_card_3_simple,
             title = "Connect & Discuss",
             description = "Join community groups and talk about what matters."
         )

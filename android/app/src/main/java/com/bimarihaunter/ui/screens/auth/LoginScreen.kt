@@ -82,7 +82,6 @@ fun LoginScreen(
             is AuthState.Success -> {
                 showOtpDialog = false
                 Toast.makeText(context, "Welcome to Bimarihaunter!", Toast.LENGTH_SHORT).show()
-                onNavigateToHome()
             }
             is AuthState.Error -> {
                 showOtpDialog = false
@@ -98,18 +97,34 @@ fun LoginScreen(
         GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
             .requestIdToken(context.getString(R.string.default_web_client_id))
             .requestEmail()
+            .requestProfile()
             .build()
     }
     val googleSignInClient = remember { GoogleSignIn.getClient(context, gso) }
     val googleLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
+        if (result.resultCode != Activity.RESULT_OK || result.data == null) {
+            Toast.makeText(context, "Google sign-in was canceled or failed.", Toast.LENGTH_SHORT).show()
+            return@rememberLauncherForActivityResult
+        }
+
         val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
         try {
-            val account = task.getResult(ApiException::class.java)!!
-            authViewModel.signInWithGoogle(account.idToken!!)
+            val account = task.getResult(ApiException::class.java)
+            if (account?.idToken != null) {
+                authViewModel.signInWithGoogle(account.idToken)
+            } else {
+                Toast.makeText(context, "Failed to get Google ID token. Try again.", Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: ApiException) {
+            Toast.makeText(
+                context,
+                "Google sign-in failed: ${e.statusCode}. ${e.message}",
+                Toast.LENGTH_LONG
+            ).show()
         } catch (e: Exception) {
-            Toast.makeText(context, "Google sign-in failed: ${e.message}", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "Google sign-in failed: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -340,12 +355,17 @@ fun LoginScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            // Sign In button (uses default mock bypass or simple notification since user requested real SMS/Google)
+            // Sign In button
             BimarihaunterButton(
-                text = "Log In",
+                text = if (authState is AuthState.Loading) "Logging in..." else "Log In",
                 onClick = {
-                    Toast.makeText(context, "Email login disabled. Please use SMS or Google sign in.", Toast.LENGTH_LONG).show()
-                }
+                    if (email.isNotBlank() && password.isNotBlank()) {
+                        authViewModel.signInWithEmailAndPassword(email.trim(), password)
+                    } else {
+                        Toast.makeText(context, "Please fill in all fields", Toast.LENGTH_SHORT).show()
+                    }
+                },
+                enabled = authState !is AuthState.Loading
             )
         }
 
@@ -371,7 +391,9 @@ fun LoginScreen(
         // Google button
         OutlinedButton(
             onClick = {
-                googleLauncher.launch(googleSignInClient.signInIntent)
+                googleSignInClient.signOut().addOnCompleteListener {
+                    googleLauncher.launch(googleSignInClient.signInIntent)
+                }
             },
             modifier = Modifier
                 .fillMaxWidth()

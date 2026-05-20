@@ -30,7 +30,7 @@ fun OfflineScreen(
             modifier = Modifier.padding(24.dp)
         ) {
             Image(
-                painter = painterResource(id = R.drawable.ghost_sad),
+                painter = painterResource(id = R.drawable.ghost_sleep),
                 contentDescription = "Offline",
                 modifier = Modifier.size(140.dp)
             )

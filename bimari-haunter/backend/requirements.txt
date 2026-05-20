@@ -14,11 +14,11 @@ beautifulsoup4==4.12.2
 playwright==1.41.0
 
 # ── NLP / ML ────────────────────────────────────────────────
-spacy==3.7.2
+# spacy
 # spaCy transformer model – install separately:
 #   python -m spacy download en_core_web_trf
-transformers==4.36.2
-torch==2.1.2
+# transformers
+# torch
 sentencepiece==0.1.99
 urduhack==1.1.1
 

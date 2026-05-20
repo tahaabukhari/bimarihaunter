@@ -28,7 +28,7 @@ fun EmptyStateScreen(
         Column(horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.padding(24.dp)) {
             Image(
-                painter = painterResource(id = R.drawable.ghost_sad),
+                painter = painterResource(id = R.drawable.ghost_sleep),
                 contentDescription = "Empty State",
                 modifier = Modifier.size(120.dp)
             )

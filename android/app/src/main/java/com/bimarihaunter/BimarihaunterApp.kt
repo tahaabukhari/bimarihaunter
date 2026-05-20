@@ -24,6 +24,7 @@ import com.bimarihaunter.ui.screens.insights.*
 import com.bimarihaunter.ui.screens.map.*
 import com.bimarihaunter.ui.screens.profile.*
 import com.bimarihaunter.ui.theme.BimarihaunterTheme
+import com.bimarihaunter.ui.feed.FeedScreen
 
 @Composable
 fun BimarihaunterApp() {
@@ -141,17 +142,17 @@ fun BimarihaunterApp() {
 
                 // ===== MAIN FLOW =====
                 composable(Screen.HomeFeed.route) {
-                    HomeFeedScreen(
-                        onNavigateToArticle = { id ->
-                            navController.navigate(Screen.ArticleDetail.createRoute(id))
-                        },
-                        onNavigateToSearch = {
-                            navController.navigate(Screen.SearchFilter.route)
-                        },
-                        onNavigateToAlerts = {
-                            navController.navigate(Screen.Alerts.route)
-                        }
-                    )
+                    val context = androidx.compose.ui.platform.LocalContext.current
+                    val database = com.bimarihaunter.db.BimarihaunterDatabase.getDatabase(context)
+                    val repository = com.bimarihaunter.repository.FeedRepository(database)
+                    val factory = com.bimarihaunter.ui.viewmodel.FeedViewModelFactory(repository)
+                    val feedViewModel: com.bimarihaunter.ui.viewmodel.FeedViewModel = androidx.lifecycle.viewmodel.compose.viewModel(factory = factory)
+                    
+                    LaunchedEffect(Unit) {
+                        feedViewModel.syncFeed("Karachi", 24.8607, 67.0011)
+                    }
+                    
+                    FeedScreen(viewModel = feedViewModel)
                 }
 
                 composable(Screen.SearchFilter.route) {
@@ -184,11 +185,12 @@ fun BimarihaunterApp() {
 
                 // ===== MAP =====
                 composable(Screen.DiseaseMap.route) {
-                    DiseaseMapScreen(
-                        onNavigateToDetail = { id ->
-                            navController.navigate(Screen.MapDetail.createRoute(id))
-                        }
-                    )
+                    val context = androidx.compose.ui.platform.LocalContext.current
+                    val database = com.bimarihaunter.db.BimarihaunterDatabase.getDatabase(context)
+                    val repository = com.bimarihaunter.repository.FeedRepository(database)
+                    val factory = com.bimarihaunter.ui.viewmodel.MapViewModelFactory(repository)
+                    val mapViewModel: com.bimarihaunter.ui.viewmodel.MapViewModel = androidx.lifecycle.viewmodel.compose.viewModel(factory = factory)
+                    com.bimarihaunter.ui.screens.MapScreen(viewModel = mapViewModel)
                 }
 
                 composable(

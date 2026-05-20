@@ -12,22 +12,20 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-class HomeViewModel(private val repository: FirebaseRepository = FirebaseRepository()) : ViewModel() {
+class HomeViewModel() : ViewModel() {
+    private val repository = FirebaseRepository()
     val newsArticles: StateFlow<List<NewsArticle>> = repository.getNews()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 }
 
-class MapViewModel(private val repository: FirebaseRepository = FirebaseRepository()) : ViewModel() {
-    val outbreaks: StateFlow<List<OutbreakPoint>> = repository.getOutbreaks()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-}
-
-class AlertsViewModel(private val repository: FirebaseRepository = FirebaseRepository()) : ViewModel() {
+class AlertsViewModel() : ViewModel() {
+    private val repository = FirebaseRepository()
     val alerts: StateFlow<List<AlertData>> = repository.getAlerts()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 }
 
-class ChatViewModel(private val repository: FirebaseRepository = FirebaseRepository()) : ViewModel() {
+class ChatViewModel() : ViewModel() {
+    private val repository = FirebaseRepository()
     val chatGroups: StateFlow<List<ChatGroup>> = repository.getChatGroups()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 

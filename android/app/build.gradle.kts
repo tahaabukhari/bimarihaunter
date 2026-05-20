@@ -3,6 +3,7 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.google.services)
+    kotlin("kapt")
 }
 
 android {
@@ -10,7 +11,7 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.bimarihaunter"
+        applicationId = "com.example.bimarihaunter"
         minSdk = 26
         targetSdk = 35
         versionCode = 1
@@ -89,4 +90,18 @@ dependencies {
     androidTestImplementation(libs.androidx.ui.test.junit4)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
+    // Room
+    implementation(libs.room.runtime)
+    implementation(libs.room.ktx)
+    kapt(libs.room.compiler)
+
+    // MediaPipe (SLM)
+    implementation(libs.mediapipe.genai)
+
+    // Timber
+    implementation(libs.timber)
+
+    // Location & FCM
+    implementation(libs.play.services.location)
+    implementation(libs.firebase.messaging)
 }

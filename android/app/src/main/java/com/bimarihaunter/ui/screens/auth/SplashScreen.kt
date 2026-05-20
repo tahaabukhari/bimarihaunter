@@ -58,7 +58,7 @@ fun SplashScreen(
         ) {
             // Ghost mascot
             Image(
-                painter = painterResource(id = R.drawable.ghost_happy),
+                painter = painterResource(id = R.drawable.ghost_hero),
                 contentDescription = "Bimarihaunter Ghost",
                 modifier = Modifier
                     .size(120.dp)

@@ -27,12 +27,15 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.bimarihaunter.R
 import com.bimarihaunter.ui.components.BimarihaunterButton
 import com.bimarihaunter.ui.theme.*
 import com.bimarihaunter.ui.viewmodel.AuthState
 import com.bimarihaunter.ui.viewmodel.AuthViewModel
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 
 @Composable
 fun SignUpScreen(
@@ -46,8 +49,12 @@ fun SignUpScreen(
     val authState by authViewModel.authState.collectAsState()
     val currentUser by authViewModel.currentUser.collectAsState()
 
+    var signUpMode by remember { mutableIntStateOf(0) } // 0: SMS, 1: Email
     var fullName by remember { mutableStateOf("") }
     var phoneNumber by remember { mutableStateOf("") }
+    var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var passwordVisible by remember { mutableStateOf(false) }
     var agreedToTerms by remember { mutableStateOf(false) }
 
     var otpCode by remember { mutableStateOf("") }
@@ -69,7 +76,6 @@ fun SignUpScreen(
             is AuthState.Success -> {
                 showOtpDialog = false
                 Toast.makeText(context, "Account created successfully!", Toast.LENGTH_SHORT).show()
-                onCreateAccount()
             }
             is AuthState.Error -> {
                 showOtpDialog = false
@@ -113,9 +119,38 @@ fun SignUpScreen(
         Text("Create Account", color = OffWhite, fontFamily = SpaceGroteskFamily,
             fontWeight = FontWeight.Bold, fontSize = 28.sp)
 
-        Spacer(modifier = Modifier.height(28.dp))
+        Spacer(modifier = Modifier.height(24.dp))
 
-        // Full Name
+        // Tab selection for Phone / Email Sign Up
+        TabRow(
+            selectedTabIndex = signUpMode,
+            containerColor = CharcoalGrey,
+            contentColor = OffWhite,
+            indicator = { tabPositions ->
+                TabRowDefaults.SecondaryIndicator(
+                    modifier = Modifier.tabIndicatorOffset(tabPositions[signUpMode]),
+                    color = LimeGreen
+                )
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+        ) {
+            Tab(
+                selected = signUpMode == 0,
+                onClick = { signUpMode = 0 },
+                text = { Text("SMS / Phone", fontFamily = InterFamily, fontWeight = FontWeight.SemiBold) }
+            )
+            Tab(
+                selected = signUpMode == 1,
+                onClick = { signUpMode = 1 },
+                text = { Text("Email / Pass", fontFamily = InterFamily, fontWeight = FontWeight.SemiBold) }
+            )
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // Full Name (Needed for both modes)
         OutlinedTextField(
             value = fullName, onValueChange = { fullName = it },
             placeholder = { Text("Full Name", color = MediumGrey) },
@@ -131,21 +166,65 @@ fun SignUpScreen(
 
         Spacer(modifier = Modifier.height(14.dp))
 
-        // Phone Number
-        OutlinedTextField(
-            value = phoneNumber, onValueChange = { phoneNumber = it },
-            placeholder = { Text("Phone Number (+923001234567)", color = MediumGrey) },
-            leadingIcon = { Icon(Icons.Default.Phone, null, tint = MediumGrey) },
-            modifier = Modifier.fillMaxWidth().height(56.dp),
-            shape = RoundedCornerShape(14.dp),
-            colors = OutlinedTextFieldDefaults.colors(
-                unfocusedContainerColor = CharcoalGrey, focusedContainerColor = CharcoalGrey,
-                unfocusedBorderColor = CharcoalGrey, focusedBorderColor = LimeGreen,
-                cursorColor = LimeGreen, focusedTextColor = OffWhite, unfocusedTextColor = OffWhite
-            ),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-            singleLine = true
-        )
+        if (signUpMode == 0) {
+            // Phone Number Field
+            OutlinedTextField(
+                value = phoneNumber, onValueChange = { phoneNumber = it },
+                placeholder = { Text("Phone Number (+923001234567)", color = MediumGrey) },
+                leadingIcon = { Icon(Icons.Default.Phone, null, tint = MediumGrey) },
+                modifier = Modifier.fillMaxWidth().height(56.dp),
+                shape = RoundedCornerShape(14.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    unfocusedContainerColor = CharcoalGrey, focusedContainerColor = CharcoalGrey,
+                    unfocusedBorderColor = CharcoalGrey, focusedBorderColor = LimeGreen,
+                    cursorColor = LimeGreen, focusedTextColor = OffWhite, unfocusedTextColor = OffWhite
+                ),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                singleLine = true
+            )
+        } else {
+            // Email Field
+            OutlinedTextField(
+                value = email, onValueChange = { email = it },
+                placeholder = { Text("Email Address", color = MediumGrey) },
+                leadingIcon = { Icon(Icons.Default.Email, null, tint = MediumGrey) },
+                modifier = Modifier.fillMaxWidth().height(56.dp),
+                shape = RoundedCornerShape(14.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    unfocusedContainerColor = CharcoalGrey, focusedContainerColor = CharcoalGrey,
+                    unfocusedBorderColor = CharcoalGrey, focusedBorderColor = LimeGreen,
+                    cursorColor = LimeGreen, focusedTextColor = OffWhite, unfocusedTextColor = OffWhite
+                ),
+                singleLine = true
+            )
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Password Field
+            OutlinedTextField(
+                value = password, onValueChange = { password = it },
+                placeholder = { Text("Password", color = MediumGrey) },
+                leadingIcon = { Icon(Icons.Default.Lock, null, tint = MediumGrey) },
+                trailingIcon = {
+                    IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                        Icon(
+                            imageVector = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                            contentDescription = "Toggle password",
+                            tint = MediumGrey
+                        )
+                    }
+                },
+                visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                modifier = Modifier.fillMaxWidth().height(56.dp),
+                shape = RoundedCornerShape(14.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    unfocusedContainerColor = CharcoalGrey, focusedContainerColor = CharcoalGrey,
+                    unfocusedBorderColor = CharcoalGrey, focusedBorderColor = LimeGreen,
+                    cursorColor = LimeGreen, focusedTextColor = OffWhite, unfocusedTextColor = OffWhite
+                ),
+                singleLine = true
+            )
+        }
 
         Spacer(modifier = Modifier.height(20.dp))
 
@@ -172,15 +251,29 @@ fun SignUpScreen(
         Spacer(modifier = Modifier.height(24.dp))
 
         BimarihaunterButton(
-            text = if (authState is AuthState.Loading) "Verifying..." else "Verify Phone & Sign Up",
+            text = if (authState is AuthState.Loading) {
+                if (signUpMode == 0) "Verifying..." else "Signing Up..."
+            } else {
+                if (signUpMode == 0) "Verify Phone & Sign Up" else "Sign Up"
+            },
             onClick = {
-                if (phoneNumber.isNotBlank() && fullName.isNotBlank() && activity != null) {
-                    authViewModel.sendVerificationCode(phoneNumber.trim(), activity)
+                if (signUpMode == 0) {
+                    if (phoneNumber.isNotBlank() && fullName.isNotBlank() && activity != null) {
+                        authViewModel.sendVerificationCode(phoneNumber.trim(), activity)
+                    } else {
+                        Toast.makeText(context, "Please fill in all fields", Toast.LENGTH_SHORT).show()
+                    }
                 } else {
-                    Toast.makeText(context, "Please fill in all fields", Toast.LENGTH_SHORT).show()
+                    if (email.isNotBlank() && password.isNotBlank() && fullName.isNotBlank()) {
+                        authViewModel.signUpWithEmailAndPassword(email.trim(), password, fullName.trim())
+                    } else {
+                        Toast.makeText(context, "Please fill in all fields", Toast.LENGTH_SHORT).show()
+                    }
                 }
             },
-            enabled = agreedToTerms && phoneNumber.isNotBlank() && fullName.isNotBlank() && authState !is AuthState.Loading
+            enabled = agreedToTerms && fullName.isNotBlank() && (
+                (signUpMode == 0 && phoneNumber.isNotBlank()) || (signUpMode == 1 && email.isNotBlank() && password.isNotBlank())
+            ) && authState !is AuthState.Loading
         )
 
         Spacer(modifier = Modifier.height(20.dp))

@@ -19,7 +19,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 
-class AuthViewModel(private val repository: FirebaseRepository = FirebaseRepository()) : ViewModel() {
+class AuthViewModel() : ViewModel() {
+    private val repository = FirebaseRepository()
     private val auth = FirebaseAuth.getInstance()
     
     private val _currentUser = MutableStateFlow<FirebaseUser?>(auth.currentUser)
@@ -70,12 +71,53 @@ class AuthViewModel(private val repository: FirebaseRepository = FirebaseReposit
         }
     }
 
-    fun signInWithGoogle(idToken: String) {
+    fun signInWithEmailAndPassword(email: String, password: String) {
+        _authState.value = AuthState.Loading
+        auth.signInWithEmailAndPassword(email, password)
+            .addOnCompleteListener { task ->
+                if (task.isSuccessful) {
+                    _authState.value = AuthState.Success
+                } else {
+                    _authState.value = AuthState.Error(task.exception?.message ?: "Email Sign-In failed")
+                }
+            }
+    }
+
+    fun signUpWithEmailAndPassword(email: String, password: String, name: String) {
+        _authState.value = AuthState.Loading
+        auth.createUserWithEmailAndPassword(email, password)
+            .addOnCompleteListener { task ->
+                if (task.isSuccessful) {
+                    val user = auth.currentUser
+                    val profileUpdates = com.google.firebase.auth.UserProfileChangeRequest.Builder()
+                        .setDisplayName(name)
+                        .build()
+                    user?.updateProfile(profileUpdates)?.addOnCompleteListener {
+                        fetchUserProfile(user.uid)
+                        _authState.value = AuthState.Success
+                    } ?: run {
+                        _authState.value = AuthState.Success
+                    }
+                } else {
+                    _authState.value = AuthState.Error(task.exception?.message ?: "Sign-Up failed")
+                }
+            }
+    }
+
+    fun signInWithGoogle(idToken: String?) {
+        if (idToken.isNullOrBlank()) {
+            _authState.value = AuthState.Error(
+                "Google Sign-In failed. Please try again or use email login."
+            )
+            return
+        }
+
         _authState.value = AuthState.Loading
         val credential = GoogleAuthProvider.getCredential(idToken, null)
         auth.signInWithCredential(credential)
             .addOnCompleteListener { task ->
                 if (task.isSuccessful) {
+                    auth.currentUser?.uid?.let { fetchUserProfile(it) }
                     _authState.value = AuthState.Success
                 } else {
                     _authState.value = AuthState.Error(task.exception?.message ?: "Google Sign-In failed")

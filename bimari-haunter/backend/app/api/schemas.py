@@ -147,3 +147,43 @@ class DashboardStats(BaseModel):
     total_full_reports: int
     verified_reports: int
     pending_delivery: int
+
+# ── Android App Support Schemas ────────────────────────────
+
+class LocationUpdateRequest(BaseModel):
+    city: str
+    latitude: float
+    longitude: float
+
+class LocationUpdateResponse(BaseModel):
+    status: str
+    message: str
+    city: str
+    feed_count: int
+
+class Coordinates(BaseModel):
+    latitude: float
+    longitude: float
+
+class AiAnalysis(BaseModel):
+    disease: str
+    severity: str
+    summary: list[str]
+    symptoms: list[str]
+    locations: list[str]
+    coordinates: Coordinates
+    confidence_score: float
+    model_used: str
+
+class OutbreakReport(BaseModel):
+    id: str
+    title: str
+    source: str
+    url: str
+    raw_text: str
+    published_at: str
+    scraped_at: str
+    status: str
+    source_type: str
+    ai_analysis: AiAnalysis
+
