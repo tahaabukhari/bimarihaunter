@@ -104,4 +104,7 @@ dependencies {
     // Location & FCM
     implementation(libs.play.services.location)
     implementation(libs.firebase.messaging)
+
+    // Coroutines Play Services (.await() for Firebase Tasks)
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.8.1")
 }

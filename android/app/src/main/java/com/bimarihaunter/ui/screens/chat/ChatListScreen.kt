@@ -37,6 +37,7 @@ fun ChatListScreen(
     onNavigateToDirectChat: (String, String, String) -> Unit = { _, _, _ -> },
     onNavigateToAiChat: () -> Unit = {},
     onNavigateToCreateGroup: () -> Unit = {},
+    onNavigateToAddFriends: () -> Unit = {},
     chatViewModel: ChatViewModel = viewModel()
 ) {
     var activeTab by remember { mutableStateOf("Groups") } // "Groups" or "DMs"

@@ -308,6 +308,9 @@ fun BimarihaunterApp() {
                         },
                         onNavigateToCreateGroup = {
                             navController.navigate(Screen.CreateGroup.route)
+                        },
+                        onNavigateToAddFriends = {
+                            navController.navigate(Screen.AddFriends.route)
                         }
                     )
                 }
@@ -350,6 +353,35 @@ fun BimarihaunterApp() {
 
                 composable(Screen.AiChat.route) {
                     AiChatScreen(
+                        onNavigateBack = { navController.popBackStack() }
+                    )
+                }
+
+                composable(Screen.AddFriends.route) {
+                    AddFriendsScreen(
+                        onNavigateBack   = { navController.popBackStack() },
+                        onNavigateToChat = { userId, userName ->
+                            navController.navigate(
+                                Screen.UserDirectChat.createRoute(userId, userName)
+                            )
+                        }
+                    )
+                }
+
+                composable(
+                    Screen.UserDirectChat.route,
+                    arguments = listOf(
+                        navArgument("userId")   { type = NavType.StringType },
+                        navArgument("userName") { type = NavType.StringType }
+                    )
+                ) { back ->
+                    val userId   = back.arguments?.getString("userId") ?: ""
+                    val userName = java.net.URLDecoder.decode(
+                        back.arguments?.getString("userName") ?: "User", "UTF-8"
+                    )
+                    UserDirectChatScreen(
+                        otherUserId   = userId,
+                        otherUserName = userName,
                         onNavigateBack = { navController.popBackStack() }
                     )
                 }
