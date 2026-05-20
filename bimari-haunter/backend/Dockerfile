@@ -12,14 +12,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Download spaCy transformer model
-RUN python -m spacy download en_core_web_trf
-
-# Copy the models download script first to cache models
-COPY scripts/download_models.py scripts/download_models.py
-
-# Pre-download HuggingFace models during build using robust script
-RUN python scripts/download_models.py
+# Removed heavy NLP model caching steps to favor lightweight rule-based fallbacks for Cloud Run
 
 # Copy the rest of the application code
 COPY . .

@@ -300,6 +300,9 @@ fun BimarihaunterApp() {
                         onNavigateToGroupChat = { id ->
                             navController.navigate(Screen.GroupChat.createRoute(id))
                         },
+                        onNavigateToDirectChat = { chatId, friendId, friendName ->
+                            navController.navigate(Screen.DirectChat.createRoute(chatId, friendId, friendName))
+                        },
                         onNavigateToAiChat = {
                             navController.navigate(Screen.AiChat.route)
                         },
@@ -319,6 +322,25 @@ fun BimarihaunterApp() {
                     GroupChatScreen(
                         groupId = backStackEntry.arguments?.getString("groupId"),
                         onNavigateBack = { navController.popBackStack() }
+                    )
+                }
+
+                composable(
+                    Screen.DirectChat.route,
+                    arguments = listOf(
+                        navArgument("chatId") { type = NavType.StringType },
+                        navArgument("friendId") { type = NavType.StringType },
+                        navArgument("friendName") { type = NavType.StringType }
+                    )
+                ) { backStackEntry ->
+                    DirectChatScreen(
+                        chatId = backStackEntry.arguments?.getString("chatId"),
+                        friendId = backStackEntry.arguments?.getString("friendId"),
+                        friendName = backStackEntry.arguments?.getString("friendName"),
+                        onNavigateBack = { navController.popBackStack() },
+                        onNavigateToArticleDetail = { articleId ->
+                            navController.navigate(Screen.ArticleDetail.createRoute(articleId))
+                        }
                     )
                 }
 

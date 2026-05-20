@@ -187,3 +187,20 @@ class OutbreakReport(BaseModel):
     source_type: str
     ai_analysis: AiAnalysis
 
+
+class UserRegisterRequest(BaseModel):
+    uid: str
+    email: str
+    name: str
+    phone_number: Optional[str] = None
+    avatar_url: Optional[str] = None
+
+
+class UserPreferencesRequest(BaseModel):
+    diseases: List[str]
+    city: str
+    latitude: float
+    longitude: float
+    radius: int = 50
+
+
