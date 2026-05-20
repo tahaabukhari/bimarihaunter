@@ -9,10 +9,11 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MyLocation
-import androidx.compose.material.icons.filled.Cloud
-import androidx.compose.material.icons.filled.WaterDrop
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.Place
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -21,6 +22,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -57,11 +59,14 @@ fun MapScreen(viewModel: MapViewModel) {
     }
 
     var userLocation by remember { mutableStateOf<LatLng?>(null) }
-    val defaultLocation = LatLng(24.8607, 67.0011)
+    val defaultLocation = LatLng(30.3753, 69.3451) // Pakistan center
     val currentLocation = userLocation ?: defaultLocation
 
     val cameraPositionState = rememberCameraPositionState {
-        position = CameraPosition.fromLatLngZoom(currentLocation, if (userLocation != null) 12f else 10f)
+        position = CameraPosition.fromLatLngZoom(
+            currentLocation,
+            if (userLocation != null) 12f else 5.5f
+        )
     }
 
     val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
@@ -84,8 +89,9 @@ fun MapScreen(viewModel: MapViewModel) {
         }
     }
 
+    // Build real insights from actual marker data
     val insights = remember(currentLocation, markers) {
-        buildEnvironmentInsights(currentLocation, markers)
+        buildRealInsights(currentLocation, markers)
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -106,7 +112,7 @@ fun MapScreen(viewModel: MapViewModel) {
                 Marker(
                     state = MarkerState(position = LatLng(marker.latitude, marker.longitude)),
                     title = marker.title,
-                    snippet = "${marker.disease} · ${marker.severity}",
+                    snippet = "${marker.disease.replaceFirstChar { it.uppercase() }} · ${marker.severity.replaceFirstChar { it.uppercase() }}",
                     icon = BitmapDescriptorFactory.defaultMarker(markerHue)
                 )
             }
@@ -116,138 +122,224 @@ fun MapScreen(viewModel: MapViewModel) {
                     center = it,
                     radius = 25000.0,
                     strokeColor = LimeGreen.copy(alpha = 0.45f),
-                    fillColor = LimeGreen.copy(alpha = 0.12f)
+                    fillColor = LimeGreen.copy(alpha = 0.08f)
                 )
             }
         }
 
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .align(Alignment.TopCenter)
-                .padding(16.dp)
-        ) {
-            if (!hasLocationPermission) {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(18.dp),
-                    colors = CardDefaults.cardColors(containerColor = MidnightBlack.copy(alpha = 0.95f))
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text(
-                            text = "Enable location to see live air quality, pollen, and weather insights around your current area.",
-                            color = OffWhite,
-                            fontSize = 14.sp,
-                            lineHeight = 20.sp
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Button(onClick = { locationLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION) }) {
-                            Icon(Icons.Default.MyLocation, contentDescription = null)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Allow location")
-                        }
+        // Top: location permission prompt
+        if (!hasLocationPermission) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.TopCenter)
+                    .padding(16.dp),
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = MidnightBlack.copy(alpha = 0.95f))
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "Enable location to see outbreak alerts near you.",
+                        color = OffWhite,
+                        fontSize = 14.sp,
+                        lineHeight = 20.sp
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Button(
+                        onClick = { locationLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION) },
+                        colors = ButtonDefaults.buttonColors(containerColor = LimeGreen, contentColor = MidnightBlack)
+                    ) {
+                        Icon(Icons.Default.MyLocation, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Allow location", fontWeight = FontWeight.Bold)
                     }
                 }
             }
         }
 
+        // Bottom: real data insights panel
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.BottomCenter)
                 .padding(16.dp)
                 .clip(RoundedCornerShape(24.dp))
-                .background(CharcoalGrey.copy(alpha = 0.96f))
-                .verticalScroll(rememberScrollState())
+                .background(CharcoalGrey.copy(alpha = 0.97f))
                 .padding(16.dp)
         ) {
+            // Header row
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                StatBox(insights.aqiLabel, "Air Quality")
-                StatBox(insights.pollenLabel, "Pollen")
-                StatBox(insights.weatherLabel, "Weather")
+                Text(
+                    text = "Live Outbreak Insights",
+                    fontFamily = SpaceGroteskFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp,
+                    color = OffWhite
+                )
+                Text(
+                    text = "${markers.size} reports",
+                    fontFamily = InterFamily,
+                    fontSize = 12.sp,
+                    color = LimeGreen
+                )
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                text = "Local coverage: ${insights.coverageRadiusKm} km base area around your live position.",
-                color = OffWhite,
-                fontSize = 13.sp,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth()
-            )
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Real stat boxes from actual data
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                StatBox(
+                    value = insights.nearbyCount.toString(),
+                    label = "Nearby (25km)"
+                )
+                StatBox(
+                    value = insights.highSeverityCount.toString(),
+                    label = "High Severity"
+                )
+                StatBox(
+                    value = insights.uniqueDiseases.toString(),
+                    label = "Disease Types"
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Disease breakdown chips
+            if (insights.diseaseBreakdown.isNotEmpty()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    insights.diseaseBreakdown.forEach { (disease, count) ->
+                        DiseaseChip(disease = disease, count = count)
+                    }
+                }
+                Spacer(modifier = Modifier.height(10.dp))
+            }
+
+            // Summary text from real data
             Text(
                 text = insights.summary,
                 color = MediumGrey,
-                fontSize = 14.sp,
-                lineHeight = 20.sp
+                fontFamily = InterFamily,
+                fontSize = 13.sp,
+                lineHeight = 19.sp
             )
-            Spacer(modifier = Modifier.height(12.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                SmallInfoChip(icon = Icons.Default.Cloud, label = "${insights.nearbyAlerts} nearby alerts")
-                SmallInfoChip(icon = Icons.Default.WaterDrop, label = "${insights.nearbyReports} outbreak markers")
+            if (insights.closestAlert != null) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.Warning,
+                        contentDescription = null,
+                        tint = EmberRed,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Nearest: ${insights.closestAlert}",
+                        color = EmberRed,
+                        fontFamily = InterFamily,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
             }
         }
     }
 }
 
 @Composable
-private fun SmallInfoChip(icon: ImageVector, label: String) {
+private fun DiseaseChip(disease: String, count: Int) {
     Row(
         modifier = Modifier
             .clip(RoundedCornerShape(16.dp))
             .background(MidnightBlack.copy(alpha = 0.7f))
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .padding(horizontal = 10.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(icon, contentDescription = null, tint = LimeGreen, modifier = Modifier.size(18.dp))
-        Spacer(modifier = Modifier.width(8.dp))
-        Text(text = label, color = OffWhite, fontSize = 12.sp)
+        Icon(Icons.Default.Place, contentDescription = null, tint = LimeGreen, modifier = Modifier.size(14.dp))
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(
+            text = "${disease.replaceFirstChar { it.uppercase() }} ($count)",
+            color = OffWhite,
+            fontFamily = InterFamily,
+            fontSize = 12.sp
+        )
     }
 }
 
-private fun buildEnvironmentInsights(currentLocation: LatLng, markers: List<MapMarker>): EnvironmentInsights {
-    val nearbyReports = markers.count { distanceBetween(currentLocation, LatLng(it.latitude, it.longitude)) <= 25000.0 }
-    val nearbyAlerts = markers.count { distanceBetween(currentLocation, LatLng(it.latitude, it.longitude)) <= 50000.0 }
-    val computedAqi = (40 + ((currentLocation.latitude + currentLocation.longitude) * 3).toInt() % 110).coerceIn(15, 210)
-    val aqiStatus = when {
-        computedAqi <= 50 -> "Good"
-        computedAqi <= 100 -> "Moderate"
-        computedAqi <= 150 -> "Unhealthy"
-        else -> "Hazardous"
+private data class RealInsights(
+    val nearbyCount: Int,
+    val highSeverityCount: Int,
+    val uniqueDiseases: Int,
+    val diseaseBreakdown: Map<String, Int>,
+    val summary: String,
+    val closestAlert: String?
+)
+
+private fun buildRealInsights(currentLocation: LatLng, markers: List<MapMarker>): RealInsights {
+    if (markers.isEmpty()) {
+        return RealInsights(
+            nearbyCount = 0,
+            highSeverityCount = 0,
+            uniqueDiseases = 0,
+            diseaseBreakdown = emptyMap(),
+            summary = "No outbreak reports loaded yet. Pull down to refresh.",
+            closestAlert = null
+        )
     }
 
-    val pollenIndex = ((currentLocation.latitude * 7 + currentLocation.longitude * 5).toInt() % 200).let {
-        when {
-            it < 50 -> "Low"
-            it < 100 -> "Moderate"
-            it < 150 -> "High"
-            else -> "Very High"
+    val nearbyMarkers = markers.filter {
+        distanceBetween(currentLocation, LatLng(it.latitude, it.longitude)) <= 25000.0
+    }
+    val highSeverity = markers.count { it.severity.lowercase() == "high" }
+    val diseaseBreakdown = markers.groupBy { it.disease.lowercase() }
+        .mapValues { it.value.size }
+        .toList()
+        .sortedByDescending { it.second }
+        .take(4)
+        .toMap()
+
+    // Find closest marker
+    val closest = markers.minByOrNull {
+        distanceBetween(currentLocation, LatLng(it.latitude, it.longitude))
+    }
+    val closestLabel = closest?.let {
+        val distKm = (distanceBetween(currentLocation, LatLng(it.latitude, it.longitude)) / 1000).toInt()
+        "${it.disease.replaceFirstChar { c -> c.uppercase() }} alert ~${distKm}km away"
+    }
+
+    val summaryText = buildString {
+        append("${markers.size} outbreak report${if (markers.size != 1) "s" else ""} tracked across Pakistan. ")
+        if (nearbyMarkers.isNotEmpty()) {
+            append("${nearbyMarkers.size} within 25 km of your location. ")
+        }
+        if (highSeverity > 0) {
+            append("$highSeverity high-severity alert${if (highSeverity != 1) "s" else ""} require attention.")
+        } else {
+            append("No high-severity alerts in current data.")
         }
     }
 
-    val weatherCondition = when ((currentLocation.latitude + currentLocation.longitude).toInt() % 4) {
-        0 -> "Clear"
-        1 -> "Humid"
-        2 -> "Cloudy"
-        else -> "Showers"
-    }
-
-    return EnvironmentInsights(
-        aqiLabel = "$computedAqi",
-        pollenLabel = pollenIndex,
-        weatherLabel = weatherCondition,
-        coverageRadiusKm = 25,
-        summary = "Your live location is being monitored across a 25 km radius. Air quality is $aqiStatus and pollen levels are $pollenIndex. Stay alert for nearby outbreak markers and weather changes.",
-        nearbyReports = nearbyReports,
-        nearbyAlerts = nearbyAlerts
+    return RealInsights(
+        nearbyCount = nearbyMarkers.size,
+        highSeverityCount = highSeverity,
+        uniqueDiseases = diseaseBreakdown.size,
+        diseaseBreakdown = diseaseBreakdown,
+        summary = summaryText,
+        closestAlert = closestLabel
     )
 }
 
@@ -255,17 +347,10 @@ private fun distanceBetween(from: LatLng, to: LatLng): Double {
     val earthRadius = 6371000.0
     val dLat = Math.toRadians(to.latitude - from.latitude)
     val dLng = Math.toRadians(to.longitude - from.longitude)
-    val a = kotlin.math.sin(dLat / 2).pow(2.0) + kotlin.math.cos(Math.toRadians(from.latitude)) * kotlin.math.cos(Math.toRadians(to.latitude)) * kotlin.math.sin(dLng / 2).pow(2.0)
+    val a = kotlin.math.sin(dLat / 2).pow(2.0) +
+            kotlin.math.cos(Math.toRadians(from.latitude)) *
+            kotlin.math.cos(Math.toRadians(to.latitude)) *
+            kotlin.math.sin(dLng / 2).pow(2.0)
     val c = 2 * kotlin.math.atan2(kotlin.math.sqrt(a), kotlin.math.sqrt(1 - a))
     return earthRadius * c
 }
-
-private data class EnvironmentInsights(
-    val aqiLabel: String,
-    val pollenLabel: String,
-    val weatherLabel: String,
-    val coverageRadiusKm: Int,
-    val summary: String,
-    val nearbyReports: Int,
-    val nearbyAlerts: Int
-)

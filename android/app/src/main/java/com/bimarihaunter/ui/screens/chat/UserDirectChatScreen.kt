@@ -137,7 +137,6 @@ fun UserDirectChatScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(MidnightBlack)
-            .navigationBarsPadding()
     ) {
         // ─── Top Bar ──────────────────────────────────────────────────────
         BimarihaunterTopAppBar(
@@ -206,6 +205,7 @@ fun UserDirectChatScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .navigationBarsPadding()
+                .imePadding()
                 .padding(12.dp)
                 .clip(RoundedCornerShape(20.dp))
                 .background(CharcoalGrey)
@@ -228,8 +228,7 @@ fun UserDirectChatScreen(
                     focusedTextColor        = OffWhite,
                     unfocusedTextColor      = OffWhite
                 ),
-                singleLine      = false,
-                maxLines        = 4
+                singleLine      = true
             )
 
             IconButton(

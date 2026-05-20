@@ -11,9 +11,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -27,6 +25,9 @@ import com.bimarihaunter.ui.components.BimarihaunterTopAppBar
 import com.bimarihaunter.ui.components.StatBox
 import com.bimarihaunter.ui.theme.*
 import com.bimarihaunter.ui.viewmodel.AuthViewModel
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.tasks.await
 
 @Composable
 fun ProfileScreen(
@@ -34,13 +35,79 @@ fun ProfileScreen(
     authViewModel: AuthViewModel = viewModel()
 ) {
     val currentUser by authViewModel.currentUser.collectAsState()
-    
-    val displayName = currentUser?.displayName ?: "Bimari Haunter"
-    val subtitleText = currentUser?.phoneNumber ?: currentUser?.email ?: "@anonymous"
-    val initials = displayName.split(" ").take(2).map { it.firstOrNull() ?: "" }.joinToString("").uppercase()
+    val userProfile by authViewModel.userProfile.collectAsState()
+
+    // Dynamic display values from Firebase Auth + Firestore profile
+    val displayName = userProfile?.name?.ifBlank { null }
+        ?: currentUser?.displayName?.ifBlank { null }
+        ?: "Bimari Haunter"
+    val subtitleText = userProfile?.email?.ifBlank { null }
+        ?: currentUser?.email?.ifBlank { null }
+        ?: currentUser?.phoneNumber?.ifBlank { null }
+        ?: "@anonymous"
+    val initials = displayName.split(" ").take(2)
+        .mapNotNull { it.firstOrNull() }.joinToString("").uppercase()
+
+    // Dynamic stats from Firestore
+    var reportsCount by remember { mutableStateOf<Int?>(null) }
+    var savedCount by remember { mutableStateOf<Int?>(null) }
+    var groupsCount by remember { mutableStateOf<Int?>(null) }
+
+    // Dynamic saved articles from Firestore
+    var savedArticles by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
+    // Dynamic groups from Firestore
+    var userGroups by remember { mutableStateOf<List<Triple<String, String, String>>>(emptyList()) }
+
+    val uid = currentUser?.uid
+
+    LaunchedEffect(uid) {
+        if (uid == null) return@LaunchedEffect
+        val db = FirebaseFirestore.getInstance()
+
+        // Count reports submitted by this user
+        try {
+            val reportsSnap = db.collection("reports")
+                .whereEqualTo("user_id", uid)
+                .get().await()
+            reportsCount = reportsSnap.size()
+        } catch (_: Exception) { reportsCount = 0 }
+
+        // Count saved articles
+        try {
+            val savedSnap = db.collection("users").document(uid)
+                .collection("saved").get().await()
+            savedCount = savedSnap.size()
+
+            // Load actual saved article titles/sources
+            savedArticles = savedSnap.documents.take(6).map { doc ->
+                val title = doc.getString("title") ?: "Saved Article"
+                val source = doc.getString("source") ?: "BimariHaunter"
+                Pair(title, source)
+            }
+        } catch (_: Exception) { savedCount = 0 }
+
+        // Count and load groups
+        try {
+            val groupsSnap = db.collection("groups")
+                .whereArrayContains("members", uid)
+                .get().await()
+            groupsCount = groupsSnap.size()
+
+            userGroups = groupsSnap.documents.take(5).map { doc ->
+                val name = doc.getString("name") ?: "Group"
+                val memberCount = (doc.get("members") as? List<*>)?.size ?: 0
+                val ini = name.split(" ").take(2)
+                    .mapNotNull { it.firstOrNull() }.joinToString("").uppercase()
+                    .ifEmpty { "G" }
+                Triple(name, ini, "$memberCount member${if (memberCount != 1) "s" else ""}")
+            }
+        } catch (_: Exception) { groupsCount = 0 }
+    }
 
     Column(
-        modifier = Modifier.fillMaxSize().background(MidnightBlack)
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MidnightBlack)
             .verticalScroll(rememberScrollState())
     ) {
         BimarihaunterTopAppBar(
@@ -52,25 +119,36 @@ fun ProfileScreen(
             }
         )
 
-        Column(modifier = Modifier.padding(horizontal = 20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(
+            modifier = Modifier.padding(horizontal = 20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
             Spacer(Modifier.height(8.dp))
 
-            // Avatar
-            Box(Modifier.size(80.dp).clip(CircleShape).background(CharcoalGrey),
-                contentAlignment = Alignment.Center) {
-                Text(initials.ifEmpty { "U" }, color = LimeGreen, fontFamily = SpaceGroteskFamily,
-                    fontWeight = FontWeight.Bold, fontSize = 28.sp)
+            // Avatar — initials from real display name
+            Box(
+                Modifier.size(80.dp).clip(CircleShape).background(CharcoalGrey),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    initials.ifEmpty { "U" },
+                    color = LimeGreen,
+                    fontFamily = SpaceGroteskFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 28.sp
+                )
             }
 
             Spacer(Modifier.height(12.dp))
 
-            Text(displayName, color = OffWhite, fontFamily = SpaceGroteskFamily,
-                fontWeight = FontWeight.Bold, fontSize = 20.sp)
+            Text(
+                displayName,
+                color = OffWhite,
+                fontFamily = SpaceGroteskFamily,
+                fontWeight = FontWeight.Bold,
+                fontSize = 20.sp
+            )
             Text(subtitleText, color = MediumGrey, fontFamily = InterFamily, fontSize = 14.sp)
-            Spacer(Modifier.height(4.dp))
-            Text("Health tech enthusiast. Building for Pakistan 🇵🇰",
-                color = MediumGrey, fontFamily = InterFamily, fontSize = 13.sp)
 
             Spacer(Modifier.height(16.dp))
 
@@ -78,39 +156,86 @@ fun ProfileScreen(
 
             Spacer(Modifier.height(20.dp))
 
-            // Stats row
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                StatBox("24", "Reports", modifier = Modifier.weight(1f))
-                StatBox("156", "Upvotes", modifier = Modifier.weight(1f))
-                StatBox("12", "Saved", modifier = Modifier.weight(1f))
+            // Dynamic stats row — shows loading skeleton until data arrives
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                StatBox(
+                    value = reportsCount?.toString() ?: "—",
+                    label = "Reports",
+                    modifier = Modifier.weight(1f)
+                )
+                StatBox(
+                    value = savedCount?.toString() ?: "—",
+                    label = "Saved",
+                    modifier = Modifier.weight(1f)
+                )
+                StatBox(
+                    value = groupsCount?.toString() ?: "—",
+                    label = "Groups",
+                    modifier = Modifier.weight(1f)
+                )
             }
 
             Spacer(Modifier.height(24.dp))
 
-            // Saved Articles
-            Text("Saved Articles", color = OffWhite, fontFamily = SpaceGroteskFamily,
-                fontWeight = FontWeight.Bold, fontSize = 16.sp,
-                modifier = Modifier.align(Alignment.Start))
+            // Saved Articles header
+            Text(
+                "Saved Articles",
+                color = OffWhite,
+                fontFamily = SpaceGroteskFamily,
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp,
+                modifier = Modifier.align(Alignment.Start)
+            )
             Spacer(Modifier.height(12.dp))
         }
 
-        LazyRow(
-            contentPadding = PaddingValues(horizontal = 20.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            items(listOf(
-                Pair("Dengue Prevention Guide for Monsoon Season", "Dawn News"),
-                Pair("Flood Relief Centers in Southern Punjab", "Geo News")
-            )) { (title, source) ->
-                Column(
-                    Modifier.width(200.dp).clip(RoundedCornerShape(14.dp))
-                        .background(CharcoalGrey).padding(14.dp)
-                ) {
-                    Text(title, color = OffWhite, fontFamily = SpaceGroteskFamily,
-                        fontWeight = FontWeight.SemiBold, fontSize = 14.sp,
-                        maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = 20.sp)
-                    Spacer(Modifier.height(6.dp))
-                    Text(source, color = MediumGrey, fontSize = 12.sp, fontFamily = InterFamily)
+        // Saved Articles — dynamic from Firestore, empty state if none
+        if (savedArticles.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(CharcoalGrey)
+                    .padding(20.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    if (savedCount == null) "Loading saved articles..." else "No saved articles yet.",
+                    color = MediumGrey,
+                    fontFamily = InterFamily,
+                    fontSize = 14.sp
+                )
+            }
+        } else {
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = 20.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                items(savedArticles) { (title, source) ->
+                    Column(
+                        Modifier
+                            .width(200.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(CharcoalGrey)
+                            .padding(14.dp)
+                    ) {
+                        Text(
+                            title,
+                            color = OffWhite,
+                            fontFamily = SpaceGroteskFamily,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            lineHeight = 20.sp
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text(source, color = MediumGrey, fontSize = 12.sp, fontFamily = InterFamily)
+                    }
                 }
             }
         }
@@ -118,32 +243,68 @@ fun ProfileScreen(
         Column(modifier = Modifier.padding(horizontal = 20.dp)) {
             Spacer(Modifier.height(24.dp))
 
-            // My Groups
-            Text("My Groups", color = OffWhite, fontFamily = SpaceGroteskFamily,
-                fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            Text(
+                "My Groups",
+                color = OffWhite,
+                fontFamily = SpaceGroteskFamily,
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp
+            )
             Spacer(Modifier.height(12.dp))
 
-            listOf(
-                Triple("Dengue Watch — Lahore", "DW", "24 members"),
-                Triple("Flood Relief Coordination", "FR", "56 members")
-            ).forEach { (name, initialsVal, count) ->
-                Row(
-                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
-                        .background(CharcoalGrey).padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
+            if (userGroups.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(CharcoalGrey)
+                        .padding(20.dp),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Box(Modifier.size(40.dp).clip(CircleShape).background(MidnightBlack),
-                        contentAlignment = Alignment.Center) {
-                        Text(initialsVal, color = LimeGreen, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                    }
-                    Spacer(Modifier.width(12.dp))
-                    Column {
-                        Text(name, color = OffWhite, fontSize = 14.sp, fontFamily = InterFamily,
-                            fontWeight = FontWeight.SemiBold)
-                        Text(count, color = MediumGrey, fontSize = 12.sp, fontFamily = InterFamily)
-                    }
+                    Text(
+                        if (groupsCount == null) "Loading groups..." else "You haven't joined any groups yet.",
+                        color = MediumGrey,
+                        fontFamily = InterFamily,
+                        fontSize = 14.sp
+                    )
                 }
-                Spacer(Modifier.height(8.dp))
+            } else {
+                userGroups.forEach { (name, ini, count) ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(CharcoalGrey)
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            Modifier.size(40.dp).clip(CircleShape).background(MidnightBlack),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                ini,
+                                color = LimeGreen,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp
+                            )
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Column {
+                            Text(
+                                name,
+                                color = OffWhite,
+                                fontSize = 14.sp,
+                                fontFamily = InterFamily,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(count, color = MediumGrey, fontSize = 12.sp, fontFamily = InterFamily)
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
             }
 
             Spacer(Modifier.height(20.dp))

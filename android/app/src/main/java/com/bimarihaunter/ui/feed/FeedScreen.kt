@@ -457,7 +457,7 @@ fun ReportCard(
             
             Spacer(modifier = Modifier.height(14.dp))
             
-            // Badges & coordinate metadata
+            // Badges & location metadata
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -465,7 +465,8 @@ fun ReportCard(
             ) {
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
                 ) {
                     Badge(
                         text = report.disease.replaceFirstChar { it.uppercase() },
@@ -484,29 +485,31 @@ fun ReportCard(
                         backgroundColor = backColor,
                         textColor = textColor
                     )
-                }
-                
-                Row(
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Lat: %.2f, Lon: %.2f".format(report.latitude, report.longitude),
-                        fontFamily = InterFamily,
-                        fontSize = 11.sp,
-                        color = MediumGrey
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    IconButton(
-                        onClick = onShareClick,
-                        modifier = Modifier.size(24.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Share,
-                            contentDescription = "Share",
-                            tint = LimeGreen,
-                            modifier = Modifier.size(16.dp)
+                    
+                    // Show first location name if available
+                    val locationLabel = report.locations.firstOrNull()?.trim()?.ifBlank { null }
+                    if (locationLabel != null) {
+                        Text(
+                            text = "📍 $locationLabel",
+                            fontFamily = InterFamily,
+                            fontSize = 11.sp,
+                            color = MediumGrey,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
+                }
+                
+                IconButton(
+                    onClick = onShareClick,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Share,
+                        contentDescription = "Share",
+                        tint = LimeGreen,
+                        modifier = Modifier.size(16.dp)
+                    )
                 }
             }
         }

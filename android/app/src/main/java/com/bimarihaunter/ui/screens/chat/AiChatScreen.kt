@@ -11,7 +11,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.*
@@ -72,20 +71,32 @@ fun AiChatScreen(
             FilterChip(
                 selected = chatMode == com.bimarihaunter.ui.viewmodel.ChatMode.THINKING,
                 onClick = { chatViewModel.setChatMode(com.bimarihaunter.ui.viewmodel.ChatMode.THINKING) },
-                label = { Text("Thinking") },
+                label = {
+                    Text(
+                        "Thinking",
+                        color = if (chatMode == com.bimarihaunter.ui.viewmodel.ChatMode.THINKING) MidnightBlack else OffWhite
+                    )
+                },
                 colors = FilterChipDefaults.filterChipColors(
-                    containerColor = if (chatMode == com.bimarihaunter.ui.viewmodel.ChatMode.THINKING) LimeGreen else CharcoalGrey,
-                    labelColor = OffWhite
-                )
+                    selectedContainerColor = LimeGreen,
+                    containerColor = CharcoalGrey
+                ),
+                border = null
             )
             FilterChip(
                 selected = chatMode == com.bimarihaunter.ui.viewmodel.ChatMode.SIMPLE,
                 onClick = { chatViewModel.setChatMode(com.bimarihaunter.ui.viewmodel.ChatMode.SIMPLE) },
-                label = { Text("Simple") },
+                label = {
+                    Text(
+                        "Simple",
+                        color = if (chatMode == com.bimarihaunter.ui.viewmodel.ChatMode.SIMPLE) MidnightBlack else OffWhite
+                    )
+                },
                 colors = FilterChipDefaults.filterChipColors(
-                    containerColor = if (chatMode == com.bimarihaunter.ui.viewmodel.ChatMode.SIMPLE) LimeGreen else CharcoalGrey,
-                    labelColor = OffWhite
-                )
+                    selectedContainerColor = LimeGreen,
+                    containerColor = CharcoalGrey
+                ),
+                border = null
             )
         }
 
@@ -192,9 +203,6 @@ fun AiChatScreen(
                 .padding(horizontal = 8.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(onClick = {}) {
-                Icon(Icons.Default.AttachFile, "Attach", tint = MediumGrey)
-            }
             TextField(
                 value = messageText,
                 onValueChange = { messageText = it },
