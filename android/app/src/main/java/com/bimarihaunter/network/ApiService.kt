@@ -8,6 +8,10 @@ interface ApiService {
     @POST("/api/v1/users/location")
     suspend fun updateLocation(@Body body: LocationUpdateRequest): LocationUpdateResponse
     
+    // Register user
+    @POST("/api/v1/users/register")
+    suspend fun registerUser(@Body body: UserRegisterRequest): SimpleResponse
+    
     // Get personalized feed
     @GET("/api/v1/feed")
     suspend fun getFeed(@Query("limit") limit: Int = 50): List<OutbreakReport>
@@ -135,4 +139,12 @@ data class BlockedListResponse(
 data class SimpleResponse(
     val status: String,
     val message: String
+)
+
+data class UserRegisterRequest(
+    val uid: String,
+    val email: String,
+    val name: String,
+    val phone_number: String? = null,
+    val avatar_url: String? = null
 )
