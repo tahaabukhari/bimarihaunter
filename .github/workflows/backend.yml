@@ -11,6 +11,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Create Firebase Service Account JSON
+        env:
+          FIREBASE_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          echo "$FIREBASE_KEY" > bimari-haunter/backend/bimarihaunter-firebase-adminsdk-fbsvc-99e53c4db6.json
+
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
