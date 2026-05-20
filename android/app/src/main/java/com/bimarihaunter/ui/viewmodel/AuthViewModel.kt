@@ -48,25 +48,23 @@ class AuthViewModel() : ViewModel() {
 
     private fun fetchUserProfile(uid: String) {
         repository.getUserProfile(uid) { profile ->
-            if (profile != null) {
-                _userProfile.value = profile
-            } else {
-                // If profile doesn't exist, create a default profile using user auth info
-                val user = auth.currentUser
-                if (user != null) {
-                    val name = user.displayName ?: user.phoneNumber ?: "User"
-                    val email = user.email ?: ""
-                    val initials = name.split(" ").filter { it.isNotEmpty() }.joinToString("") { it.take(1) }.uppercase()
-                    val newProfile = User(
-                        uid = uid,
-                        name = name,
-                        email = email,
-                        phoneNumber = user.phoneNumber ?: "",
-                        initials = if (initials.isNotEmpty()) initials else "US"
-                    )
-                    repository.saveUserProfile(newProfile)
-                    _userProfile.value = newProfile
+            val user = auth.currentUser
+            if (user != null) {
+                val name = profile?.name ?: user.displayName ?: user.phoneNumber ?: "User"
+                val email = profile?.email ?: user.email ?: ""
+                val phone = profile?.phoneNumber ?: user.phoneNumber ?: ""
+                val initials = name.split(" ").filter { it.isNotEmpty() }.joinToString("") { it.take(1) }.uppercase()
+                val profileToSave = User(
+                    uid = uid,
+                    name = name,
+                    email = email,
+                    phoneNumber = phone,
+                    initials = if (initials.isNotEmpty()) initials else "US"
+                )
+                viewModelScope.launch {
+                    repository.saveUserProfile(profileToSave)
                 }
+                _userProfile.value = profileToSave
             }
         }
     }

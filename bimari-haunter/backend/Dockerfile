@@ -12,11 +12,14 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Removed heavy NLP model caching steps to favor lightweight rule-based fallbacks for Cloud Run
+# Install Playwright Chromium browser
+RUN playwright install chromium
 
 # Copy the rest of the application code
 COPY . .
 
+# Cloud Run uses PORT env var
+ENV PORT=8080
 EXPOSE 8080
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "1"]

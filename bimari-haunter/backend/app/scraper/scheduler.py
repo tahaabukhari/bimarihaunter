@@ -21,7 +21,7 @@ import structlog
 from app.database.firestore import db
 from google.cloud import firestore
 from app.config import settings
-from app.nlp.processor import NLPProcessor
+from app.nlp.fast_classifier import classify_article as _fast_classify
 from app.scraper.crawler import NewsCrawler
 from app.scraper.facebook_client import FacebookScraper
 
@@ -51,7 +51,7 @@ class ScrapeScheduler:
     def __init__(self, *, max_concurrent: int = 3) -> None:
         self.max_concurrent = max_concurrent
         self._semaphore = asyncio.Semaphore(max_concurrent)
-        self.nlp = NLPProcessor()
+        pass  # No heavy model loading needed
 
     async def run_all(
         self,
@@ -217,61 +217,45 @@ class ScrapeScheduler:
                     }
                     doc_ref.set(raw_doc)
 
-                    # 5. Run AI classifier (NLP Processor)
+                    # 5. Fast keyword classifier (replaces 1.6GB BART model)
                     try:
-                        nlp_result = self.nlp.process(content)
+                        title_text = article_data.get("title") or ""
+                        nlp_result = _fast_classify(title=title_text, text=content)
+                        if nlp_result is None:
+                            logger.info("article_not_health_related_skipped", url=url)
+                            doc_ref.update({"status": "irrelevant"})
+                            continue
 
-                        # Determine severity string
-                        sev_score = nlp_result.get("severity", 0.0)
-                        severity_str = "high" if sev_score >= 0.6 else "medium" if sev_score >= 0.3 else "low"
+                        severity_str = nlp_result["_severity_str"]
+                        summary_array = nlp_result["_summary_list"]
+                        detected_disease = nlp_result["_disease"]
+                        locations = nlp_result["_locations"]
+                        lat, lon = nlp_result["_coordinates"]
 
-                        # Ensure summary is a list of sentences/strings as per schema
-                        summary_str = nlp_result.get("summary", "")
-                        summary_array = [s.strip() for s in summary_str.split(".") if s.strip()]
-
-                        # Find disease type
-                        diseases = nlp_result["entities"].get("diseases", [])
-                        detected_disease = diseases[0].lower() if diseases else "general outbreak"
-
-                        # Resolve geographic coordinates
-                        locations = nlp_result["entities"].get("locations", [])
-                        lat, lon = 30.3753, 69.3451 # General centroid of Pakistan
-                        for loc in locations:
-                            loc_lower = loc.lower().strip()
-                            if loc_lower in COORDINATES_MAP:
-                                lat, lon = COORDINATES_MAP[loc_lower]
-                                break
-
-                        # Build official AI analysis block
                         ai_analysis = {
                             "disease": detected_disease,
                             "severity": severity_str,
                             "summary": summary_array,
-                            "symptoms": nlp_result["entities"].get("symptoms", []),
+                            "symptoms": nlp_result["_symptoms"],
                             "locations": locations,
                             "coordinates": firestore.GeoPoint(lat, lon),
-                            "confidence_score": nlp_result["classification"].get("score", 1.0),
-                            "model_used": nlp_result["model_metadata"].get("classifier", "facebook/bart-large-mnli")
+                            "confidence_score": nlp_result["_confidence"],
+                            "model_used": "keyword-classifier-v1"
                         }
 
-                        # 6. Update document in Firestore to status: "analyzed"
                         doc_ref.update({
                             "ai_analysis": ai_analysis,
                             "status": "analyzed"
                         })
                         items_stored += 1
 
-                        # Trigger real-time personalized location feed fan-out
                         full_report = doc_ref.get().to_dict()
                         full_report["id"] = doc_ref.id
                         await self._fan_out_report(full_report)
 
-
                     except Exception as nlp_err:
                         logger.error("nlp_enrichment_failed", url=url, error=str(nlp_err))
-                        doc_ref.update({
-                            "status": "failed"
-                        })
+                        doc_ref.update({"status": "failed"})
 
                 # Update job status
                 job_ref.update({
@@ -360,36 +344,30 @@ class ScrapeScheduler:
                     }
                     doc_ref.set(raw_doc)
 
-                    # 3. NLP Enrichment
+                    # 3. Fast keyword NLP enrichment
                     try:
-                        nlp_result = self.nlp.process(content)
+                        title_text = raw_doc.get("title") or ""
+                        nlp_result = _fast_classify(title=title_text, text=content)
+                        if nlp_result is None:
+                            logger.info("social_article_not_health_related_skipped")
+                            doc_ref.update({"status": "irrelevant"})
+                            continue
 
-                        sev_score = nlp_result.get("severity", 0.0)
-                        severity_str = "high" if sev_score >= 0.6 else "medium" if sev_score >= 0.3 else "low"
-
-                        summary_str = nlp_result.get("summary", "")
-                        summary_array = [s.strip() for s in summary_str.split(".") if s.strip()]
-
-                        diseases = nlp_result["entities"].get("diseases", [])
-                        detected_disease = diseases[0].lower() if diseases else "general outbreak"
-
-                        locations = nlp_result["entities"].get("locations", [])
-                        lat, lon = 30.3753, 69.3451
-                        for loc in locations:
-                            loc_lower = loc.lower().strip()
-                            if loc_lower in COORDINATES_MAP:
-                                lat, lon = COORDINATES_MAP[loc_lower]
-                                break
+                        severity_str = nlp_result["_severity_str"]
+                        summary_array = nlp_result["_summary_list"]
+                        detected_disease = nlp_result["_disease"]
+                        locations = nlp_result["_locations"]
+                        lat, lon = nlp_result["_coordinates"]
 
                         ai_analysis = {
                             "disease": detected_disease,
                             "severity": severity_str,
                             "summary": summary_array,
-                            "symptoms": nlp_result["entities"].get("symptoms", []),
+                            "symptoms": nlp_result["_symptoms"],
                             "locations": locations,
                             "coordinates": firestore.GeoPoint(lat, lon),
-                            "confidence_score": nlp_result["classification"].get("score", 1.0),
-                            "model_used": nlp_result["model_metadata"].get("classifier", "facebook/bart-large-mnli")
+                            "confidence_score": nlp_result["_confidence"],
+                            "model_used": "keyword-classifier-v1"
                         }
 
                         doc_ref.update({
@@ -398,17 +376,13 @@ class ScrapeScheduler:
                         })
                         items_stored += 1
 
-                        # Trigger real-time personalized location feed fan-out
                         full_report = doc_ref.get().to_dict()
                         full_report["id"] = doc_ref.id
                         await self._fan_out_report(full_report)
 
-
                     except Exception as nlp_err:
                         logger.error("nlp_enrichment_failed_social", error=str(nlp_err))
-                        doc_ref.update({
-                            "status": "failed"
-                        })
+                        doc_ref.update({"status": "failed"})
 
                 # Update job status
                 job_ref.update({

@@ -1,1 +1,0 @@
-# BimariHaunter Backend Application

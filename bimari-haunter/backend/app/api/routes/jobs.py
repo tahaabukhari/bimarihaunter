@@ -13,7 +13,7 @@ from app.scraper.scheduler import ScrapeScheduler
 from app.config import settings
 from app.services.firebase_auth import verify_firebase_token
 
-router = APIRouter(prefix="/api/v1", tags=["jobs"])
+router = APIRouter(prefix="/jobs", tags=["jobs"])
 
 
 async def run_scraper_background(

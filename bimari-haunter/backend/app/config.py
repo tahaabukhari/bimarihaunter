@@ -2,14 +2,7 @@
 Application configuration via pydantic-settings.
 Loads from environment variables / .env file.
 """
-
 from __future__ import annotations
-
-from typing import Optional
-
-from dotenv import load_dotenv
-load_dotenv()
-
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -23,27 +16,11 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # ── Gemini / AI Studio ──────────────────────────────────
-    gemini_api_key: str = ""
+    # Override via GEMINI_API_KEY environment variable in Cloud Run
+    gemini_api_key: str = "AIzaSyDpJ_0HG5zNQxoMciTkwlIIz0cFNaV1rwA"
 
-    # ── Database ────────────────────────────────────────────
-    database_url: str = "postgresql+asyncpg://user:pass@localhost/bimari_haunter"
-
-    # ── Facebook Graph API ──────────────────────────────────
-    facebook_app_id: str = ""
-    facebook_app_secret: str = ""
-    facebook_access_token: str = ""
-
-    # ── Google Cloud ────────────────────────────────────────
-    google_cloud_project: str = ""
-    secret_manager_prefix: str = "bimari-haunter"
-
-    # ── Optional services ───────────────────────────────────
-    redis_url: Optional[str] = None
-
-    # ── Operational limits ──────────────────────────────────
+    # Operational limits
     max_concurrent_scrapers: int = 5
-    websocket_max_connections: int = 1000
 
 
 settings = Settings()

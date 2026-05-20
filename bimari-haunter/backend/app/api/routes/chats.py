@@ -25,6 +25,7 @@ import google.generativeai as genai
 import structlog
 from app.database.firestore import db
 from app.services.firebase_auth import verify_firebase_token
+from app.config import settings
 
 logger = structlog.get_logger(__name__)
 router = APIRouter(prefix="/chats", tags=["chats"])
@@ -403,13 +404,11 @@ async def send_message(
             
             # 2. Fallback to Google AI Studio (Hobbyist / API Key mode)
             if not vertex_success:
-                api_key = os.environ.get("GEMINI_API_KEY")
+                api_key = settings.gemini_api_key or os.environ.get("GEMINI_API_KEY", "")
                 if not api_key:
                     logger.warning("gemini_api_key_missing_using_sandbox_advisory")
                     ai_response_text = (
-                        "⚠️ [Smart Mode Sandbox] Gemini API key is currently unset in the server environment. "
-                        "However, based on Firestore databases: Dengue outbreaks are currently highly active in "
-                        "Karachi and Lahore. Please practice preventative vector controls (clearing stagnant water)."
+                        "⚠️ Gemini API key is not configured. Please contact support."
                     )
                 else:
                     genai.configure(api_key=api_key)
