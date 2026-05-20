@@ -1,6 +1,7 @@
 package com.bimarihaunter.network
 
 import retrofit2.http.*
+import com.bimarihaunter.data.model.User
 
 interface ApiService {
     // Update user location
@@ -22,6 +23,34 @@ interface ApiService {
         @Query("mode") mode: String, // "local" or "smart"
         @Body body: ChatMessageRequest
     ): ChatMessageResponse
+
+    // Search users
+    @GET("/api/v1/users/search")
+    suspend fun searchUsers(@Query("query") query: String): UserSearchResponse
+    
+    // Add friend
+    @POST("/api/v1/users/friends/{friendId}")
+    suspend fun addFriend(@Path("friendId") friendId: String): SimpleResponse
+    
+    // Remove friend
+    @DELETE("/api/v1/users/friends/{friendId}")
+    suspend fun removeFriend(@Path("friendId") friendId: String): SimpleResponse
+    
+    // List friends
+    @GET("/api/v1/users/friends")
+    suspend fun getFriends(): FriendsListResponse
+    
+    // Block user
+    @POST("/api/v1/users/block/{blockedId}")
+    suspend fun blockUser(@Path("blockedId") blockedId: String): SimpleResponse
+    
+    // Unblock user
+    @DELETE("/api/v1/users/block/{blockedId}")
+    suspend fun unblockUser(@Path("blockedId") blockedId: String): SimpleResponse
+    
+    // List blocked users
+    @GET("/api/v1/users/blocked")
+    suspend fun getBlockedUsers(): BlockedListResponse
 }
 
 data class JobTriggerResponse(
@@ -82,4 +111,28 @@ data class ChatMessageResponse(
     val user_message_id: String,
     val ai_message_id: String,
     val response: String
+)
+
+data class UserSearchResponse(
+    val users: List<User>
+)
+
+data class FriendsListResponse(
+    val friends: List<FriendInfo>
+)
+
+data class FriendInfo(
+    val uid: String,
+    val name: String,
+    val email: String,
+    val added_at: String? = null
+)
+
+data class BlockedListResponse(
+    val blocked: List<String>
+)
+
+data class SimpleResponse(
+    val status: String,
+    val message: String
 )

@@ -18,6 +18,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.material.ripple.rememberRipple
 import androidx.compose.runtime.*
@@ -31,8 +33,17 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.platform.LocalContext
+import android.widget.Toast
+import androidx.compose.foundation.shape.CircleShape
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.google.firebase.auth.FirebaseAuth
+import com.bimarihaunter.ui.viewmodel.ChatViewModel
+import androidx.compose.ui.text.style.TextAlign
 import com.bimarihaunter.db.OutbreakReportEntity
 import com.bimarihaunter.ui.theme.*
 import com.bimarihaunter.ui.viewmodel.FeedViewModel
@@ -48,6 +59,7 @@ fun FeedScreen(
     var searchQuery by remember { mutableStateOf("") }
     var diseaseFilter by remember { mutableStateOf<String?>(null) }
     var severityFilter by remember { mutableStateOf<String?>(null) }
+    var activeSharePost by remember { mutableStateOf<OutbreakReportEntity?>(null) }
 
     // Client-side search and filter execution over local cache flow
     val filteredFeed = remember(rawFeed, searchQuery, diseaseFilter, severityFilter) {
@@ -196,10 +208,20 @@ fun FeedScreen(
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     items(feedList, key = { it.id }) { report ->
-                        ReportCard(report = report)
+                        ReportCard(
+                            report = report,
+                            onShareClick = { activeSharePost = report }
+                        )
                     }
                 }
             }
+        }
+
+        if (activeSharePost != null) {
+            QuickShareDialog(
+                onDismiss = { activeSharePost = null },
+                report = activeSharePost!!
+            )
         }
     }
 }
@@ -360,7 +382,10 @@ fun FilterChips(
 }
 
 @Composable
-fun ReportCard(report: OutbreakReportEntity) {
+fun ReportCard(
+    report: OutbreakReportEntity,
+    onShareClick: () -> Unit
+) {
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
@@ -439,7 +464,8 @@ fun ReportCard(report: OutbreakReportEntity) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     Badge(
                         text = report.disease.replaceFirstChar { it.uppercase() },
@@ -460,12 +486,28 @@ fun ReportCard(report: OutbreakReportEntity) {
                     )
                 }
                 
-                Text(
-                    text = "Lat: %.2f, Lon: %.2f".format(report.latitude, report.longitude),
-                    fontFamily = InterFamily,
-                    fontSize = 11.sp,
-                    color = MediumGrey
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Lat: %.2f, Lon: %.2f".format(report.latitude, report.longitude),
+                        fontFamily = InterFamily,
+                        fontSize = 11.sp,
+                        color = MediumGrey
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    IconButton(
+                        onClick = onShareClick,
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Share,
+                            contentDescription = "Share",
+                            tint = LimeGreen,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
             }
         }
     }
@@ -490,5 +532,136 @@ fun Badge(
             fontSize = 11.sp,
             color = textColor
         )
+    }
+}
+
+@Composable
+fun QuickShareDialog(
+    onDismiss: () -> Unit,
+    report: OutbreakReportEntity,
+    chatViewModel: ChatViewModel = viewModel()
+) {
+    val friends by chatViewModel.friends.collectAsState()
+    val blockedUsers by chatViewModel.blockedUsers.collectAsState()
+    val currentUid = FirebaseAuth.getInstance().currentUser?.uid ?: ""
+    val context = LocalContext.current
+
+    LaunchedEffect(Unit) {
+        chatViewModel.loadFriends()
+    }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            colors = CardDefaults.cardColors(containerColor = CharcoalGrey),
+            shape = RoundedCornerShape(24.dp),
+            modifier = Modifier.fillMaxWidth().padding(16.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(20.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Share Outbreak",
+                        color = OffWhite,
+                        fontFamily = SpaceGroteskFamily,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp
+                    )
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, "Close", tint = OffWhite)
+                    }
+                }
+
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = report.title,
+                    color = LimeGreen,
+                    fontFamily = SpaceGroteskFamily,
+                    fontSize = 13.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                Spacer(Modifier.height(16.dp))
+
+                val unblockedFriends = friends.filter { !blockedUsers.contains(it.uid) }
+
+                Box(modifier = Modifier.fillMaxWidth().height(200.dp)) {
+                    if (unblockedFriends.isEmpty()) {
+                        Text(
+                            "Add friends in the Community tab to share outbreak updates!",
+                            color = MediumGrey,
+                            fontSize = 13.sp,
+                            fontFamily = InterFamily,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.align(Alignment.Center)
+                        )
+                    } else {
+                        LazyColumn(
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(unblockedFriends) { friend ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(MidnightBlack)
+                                        .padding(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = Modifier.size(32.dp).clip(CircleShape).background(CharcoalGrey),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        val initials = friend.name.split(" ").take(2).map { it.firstOrNull() ?: "" }.joinToString("").uppercase()
+                                        Text(initials, color = OffWhite, fontSize = 12.sp)
+                                    }
+                                    Spacer(Modifier.width(12.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        Text(friend.name, color = OffWhite, fontFamily = SpaceGroteskFamily, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                        Text(friend.email, color = MediumGrey, fontSize = 11.sp, fontFamily = InterFamily, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    }
+                                    Spacer(Modifier.width(8.dp))
+                                    
+                                    var isSent by remember { mutableStateOf(false) }
+                                    Button(
+                                        onClick = {
+                                            isSent = true
+                                            val chatId = if (currentUid < friend.uid) "${currentUid}_${friend.uid}" else "${friend.uid}_${currentUid}"
+                                            chatViewModel.sendDirectMessage(
+                                                chatId = chatId,
+                                                recipientId = friend.uid,
+                                                recipientName = friend.name,
+                                                text = "Shared an outbreak report: ${report.title}",
+                                                sharedPostId = report.id,
+                                                sharedPostTitle = report.title,
+                                                sharedPostDisease = report.disease,
+                                                sharedPostSeverity = report.severity,
+                                                sharedPostUrl = report.url
+                                            )
+                                            Toast.makeText(context, "Report shared with ${friend.name}", Toast.LENGTH_SHORT).show()
+                                        },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = if (isSent) CharcoalGrey else LimeGreen,
+                                            contentColor = if (isSent) LimeGreen else MidnightBlack
+                                        ),
+                                        shape = RoundedCornerShape(8.dp),
+                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
+                                        modifier = Modifier.height(28.dp),
+                                        enabled = !isSent
+                                    ) {
+                                        Text(if (isSent) "Sent" else "Send", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
