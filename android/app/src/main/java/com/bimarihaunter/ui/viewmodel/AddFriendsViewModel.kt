@@ -61,6 +61,19 @@ class AddFriendsViewModel : ViewModel() {
                 val results = mutableListOf<User>()
                 val trimmed = query.trim()
 
+                // Strategy 0: UID direct lookup — instant, always works, no index
+                if (trimmed.length >= 20) {
+                    try {
+                        val doc = db.collection("users").document(trimmed).get().await()
+                        val user = doc.toObject(User::class.java)
+                        if (user != null && user.uid != currentUid) {
+                            results.add(user)
+                        }
+                    } catch (e: Exception) {
+                        Timber.w(e, "searchUsers: UID direct lookup failed")
+                    }
+                }
+
                 // Strategy 1: lowercase range query (NO orderBy, NO index needed)
                 val lower = trimmed.lowercase()
                 try {
@@ -138,6 +151,41 @@ class AddFriendsViewModel : ViewModel() {
                 _searchResults.value = results
             } catch (e: Exception) {
                 Timber.e(e, "User search failed")
+                _searchResults.value = emptyList()
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
+    /**
+     * Called when a QR code is scanned. The QR code encodes the user's UID directly.
+     * Performs an immediate UID document lookup.
+     */
+    fun searchByUid(uid: String) {
+        if (uid.isBlank()) return
+        viewModelScope.launch {
+            _isLoading.value = true
+            try {
+                val doc = db.collection("users").document(uid.trim()).get().await()
+                val user = doc.toObject(User::class.java)
+                when {
+                    user != null && user.uid != currentUid -> {
+                        _searchResults.value = listOf(user)
+                        _snackMessage.value = "Found: ${user.name}"
+                    }
+                    user?.uid == currentUid -> {
+                        _snackMessage.value = "That's your own QR code!"
+                        _searchResults.value = emptyList()
+                    }
+                    else -> {
+                        _snackMessage.value = "No user found with that QR code."
+                        _searchResults.value = emptyList()
+                    }
+                }
+            } catch (e: Exception) {
+                Timber.e(e, "searchByUid failed")
+                _snackMessage.value = "QR scan failed. Please try again."
                 _searchResults.value = emptyList()
             } finally {
                 _isLoading.value = false

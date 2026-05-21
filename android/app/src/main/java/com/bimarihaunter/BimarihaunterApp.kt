@@ -289,7 +289,10 @@ fun BimarihaunterApp() {
 
                 // ===== INSIGHTS =====
                 composable(Screen.Insights.route) {
-                    InsightsScreen()
+                    val context = androidx.compose.ui.platform.LocalContext.current
+                    val database = com.bimarihaunter.db.BimarihaunterDatabase.getDatabase(context)
+                    val insightsFeedRepo = remember { com.bimarihaunter.repository.FeedRepository(database) }
+                    InsightsScreen(feedRepository = insightsFeedRepo)
                 }
 
                 composable(Screen.Alerts.route) {

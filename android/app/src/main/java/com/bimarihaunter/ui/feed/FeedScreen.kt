@@ -183,6 +183,16 @@ fun FeedScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        androidx.compose.foundation.Image(
+                            painter = androidx.compose.ui.res.painterResource(
+                                if (rawFeed.isEmpty() && syncStatus is FeedViewModel.SyncStatus.Loading)
+                                    com.bimarihaunter.R.drawable.ghost_sleep
+                                else com.bimarihaunter.R.drawable.ghost_sad
+                            ),
+                            contentDescription = null,
+                            modifier = Modifier.size(80.dp)
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
                         Text(
                             text = if (rawFeed.isEmpty() && syncStatus is FeedViewModel.SyncStatus.Loading) 
                                 "Syncing latest updates..." else "No reports found",

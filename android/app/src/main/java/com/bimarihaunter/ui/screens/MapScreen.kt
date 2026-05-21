@@ -12,6 +12,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material3.*
@@ -45,6 +46,18 @@ fun MapScreen(viewModel: MapViewModel) {
     val markers by viewModel.mapMarkers.collectAsState()
     val isSyncing by viewModel.isSyncing.collectAsState()
     val syncError by viewModel.syncError.collectAsState()
+    val nearbyAlert by viewModel.nearbyAlert.collectAsState()
+    var showNearbyBanner by remember { mutableStateOf(false) }
+    var nearbyBannerData by remember { mutableStateOf<Pair<com.bimarihaunter.ui.viewmodel.MapMarker, Double>?>(null) }
+
+    LaunchedEffect(nearbyAlert) {
+        if (nearbyAlert != null) {
+            nearbyBannerData = nearbyAlert
+            showNearbyBanner = true
+            kotlinx.coroutines.delay(6000)
+            showNearbyBanner = false
+        }
+    }
     var hasLocationPermission by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(
@@ -84,10 +97,32 @@ fun MapScreen(viewModel: MapViewModel) {
     }
 
     LaunchedEffect(userLocation) {
-        userLocation?.let {
+        userLocation?.let { loc ->
             cameraPositionState.animate(
-                update = CameraUpdateFactory.newLatLngZoom(it, 12f)
+                update = CameraUpdateFactory.newLatLngZoom(loc, 12f)
             )
+            viewModel.checkProximityNotifications(context, loc)
+        }
+    }
+
+    // Dynamic pin rendering: only show markers within the current camera viewport
+    // This gives the "pins appear as you scroll" effect
+    val visibleMarkers by remember {
+        derivedStateOf {
+            val bounds = cameraPositionState.projection?.visibleRegion?.latLngBounds
+            if (bounds == null) {
+                markers // Show all if projection not ready
+            } else {
+                // Expand bounds slightly so pins near edges are visible
+                val latPad = (bounds.northeast.latitude - bounds.southwest.latitude) * 0.1
+                val lngPad = (bounds.northeast.longitude - bounds.southwest.longitude) * 0.1
+                markers.filter { m ->
+                    m.latitude  >= bounds.southwest.latitude  - latPad &&
+                    m.latitude  <= bounds.northeast.latitude  + latPad &&
+                    m.longitude >= bounds.southwest.longitude - lngPad &&
+                    m.longitude <= bounds.northeast.longitude + lngPad
+                }
+            }
         }
     }
 
@@ -103,7 +138,7 @@ fun MapScreen(viewModel: MapViewModel) {
             properties = MapProperties(isMyLocationEnabled = hasLocationPermission),
             uiSettings = MapUiSettings(myLocationButtonEnabled = false, zoomControlsEnabled = false)
         ) {
-            markers.forEach { marker ->
+            visibleMarkers.forEach { marker ->
                 val markerHue = when (marker.severity.lowercase()) {
                     "high" -> BitmapDescriptorFactory.HUE_RED
                     "medium" -> BitmapDescriptorFactory.HUE_ORANGE
@@ -114,7 +149,7 @@ fun MapScreen(viewModel: MapViewModel) {
                 Marker(
                     state = MarkerState(position = LatLng(marker.latitude, marker.longitude)),
                     title = marker.title,
-                    snippet = "${marker.disease.replaceFirstChar { it.uppercase() }} · ${marker.severity.replaceFirstChar { it.uppercase() }}",
+                    snippet = "${marker.disease.replaceFirstChar { it.uppercase() }} · ${marker.severity.replaceFirstChar { it.uppercase() }} · ${marker.lastUpdatedLabel()}",
                     icon = BitmapDescriptorFactory.defaultMarker(markerHue)
                 )
             }
@@ -236,12 +271,40 @@ fun MapScreen(viewModel: MapViewModel) {
                         fontSize = 16.sp,
                         color = OffWhite
                     )
-                    Text(
-                        text = "${markers.size} reports",
-                        fontFamily = InterFamily,
-                        fontSize = 12.sp,
-                        color = LimeGreen
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "${visibleMarkers.size}/${markers.size} reports",
+                            fontFamily = InterFamily,
+                            fontSize = 12.sp,
+                            color = LimeGreen
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        if (isSyncing) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                color = LimeGreen,
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            IconButton(
+                                onClick = {
+                                    viewModel.syncFeed(
+                                        context = context,
+                                        latitude = userLocation?.latitude,
+                                        longitude = userLocation?.longitude
+                                    )
+                                },
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Refresh,
+                                    contentDescription = "Refresh news",
+                                    tint = LimeGreen,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
@@ -312,6 +375,57 @@ fun MapScreen(viewModel: MapViewModel) {
                             fontFamily = InterFamily,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+            }
+        }
+
+        // Ghost alert banner — appears when user enters a 15km outbreak zone
+        androidx.compose.animation.AnimatedVisibility(
+            visible = showNearbyBanner,
+            enter = androidx.compose.animation.slideInVertically { -it } +
+                    androidx.compose.animation.fadeIn(),
+            exit  = androidx.compose.animation.slideOutVertically { -it } +
+                    androidx.compose.animation.fadeOut(),
+            modifier = Modifier.align(Alignment.TopCenter).padding(top = 16.dp)
+        ) {
+            nearbyBannerData?.let { (marker, dist) ->
+                Row(
+                    modifier = Modifier
+                        .padding(horizontal = 16.dp)
+                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
+                        .background(
+                            when (marker.severity.lowercase()) {
+                                "high", "critical" -> com.bimarihaunter.ui.theme.EmberRed
+                                "medium"           -> com.bimarihaunter.ui.theme.GoldWarning
+                                else               -> com.bimarihaunter.ui.theme.LimeGreen
+                            }
+                        )
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    androidx.compose.foundation.Image(
+                        painter = androidx.compose.ui.res.painterResource(com.bimarihaunter.R.drawable.ghost_alert),
+                        contentDescription = null,
+                        modifier = Modifier.size(32.dp)
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Column {
+                        Text(
+                            "Outbreak ${if (dist < 1.0) "< 1 km" else "~${dist.toInt()} km"} away!",
+                            color = com.bimarihaunter.ui.theme.MidnightBlack,
+                            fontFamily = com.bimarihaunter.ui.theme.SpaceGroteskFamily,
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                            fontSize = 13.sp
+                        )
+                        Text(
+                            marker.disease.replaceFirstChar { it.uppercase() } + " — " + marker.title.take(50),
+                            color = com.bimarihaunter.ui.theme.MidnightBlack.copy(alpha = 0.8f),
+                            fontFamily = com.bimarihaunter.ui.theme.InterFamily,
+                            fontSize = 11.sp,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                         )
                     }
                 }

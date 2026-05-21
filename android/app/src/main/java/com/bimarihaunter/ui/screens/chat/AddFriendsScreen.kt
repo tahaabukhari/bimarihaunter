@@ -7,9 +7,19 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import android.Manifest
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.Preview
+import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.view.PreviewView
+import androidx.compose.foundation.border
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.PersonAdd
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
@@ -18,16 +28,27 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.bimarihaunter.data.model.User
 import com.bimarihaunter.ui.components.BimarihaunterTopAppBar
 import com.bimarihaunter.ui.theme.*
 import com.bimarihaunter.ui.viewmodel.AddFriendsViewModel
 import com.bimarihaunter.ui.viewmodel.FriendRequest
+import com.google.mlkit.vision.barcode.BarcodeScanning
+import com.google.mlkit.vision.barcode.common.Barcode
+import com.google.mlkit.vision.common.InputImage
+import java.util.concurrent.Executors
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -38,6 +59,13 @@ fun AddFriendsScreen(
 ) {
     var searchQuery      by remember { mutableStateOf("") }
     var selectedTab      by remember { mutableIntStateOf(0) }
+    var showQrScanner    by remember { mutableStateOf(false) }
+    val context          = LocalContext.current
+    val cameraPermLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) showQrScanner = true
+    }
     val searchResults    by viewModel.searchResults.collectAsState()
     val myFriends        by viewModel.myFriends.collectAsState()
     val pendingRequests  by viewModel.pendingRequests.collectAsState()
@@ -131,6 +159,36 @@ fun AddFriendsScreen(
                         strokeWidth = 2.dp
                     )
                 }
+                // QR scan button
+                IconButton(
+                    onClick = {
+                        val hasPerm = ContextCompat.checkSelfPermission(
+                            context, Manifest.permission.CAMERA
+                        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                        if (hasPerm) showQrScanner = true
+                        else cameraPermLauncher.launch(Manifest.permission.CAMERA)
+                    }
+                ) {
+                    Icon(
+                        Icons.Default.QrCodeScanner,
+                        contentDescription = "Scan QR",
+                        tint = LimeGreen,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+            }
+
+            // QR Scanner dialog
+            if (showQrScanner) {
+                QrScannerDialog(
+                    onScanned = { uid ->
+                        showQrScanner = false
+                        searchQuery = uid
+                        viewModel.searchByUid(uid)
+                        selectedTab = 0
+                    },
+                    onDismiss = { showQrScanner = false }
+                )
             }
 
             // ─── Tabs ─────────────────────────────────────────────────────────
@@ -414,13 +472,134 @@ private fun EmptyTabMessage(message: String) {
         modifier          = Modifier.fillMaxSize().padding(32.dp),
         contentAlignment  = Alignment.Center
     ) {
-        Text(
-            message,
-            color      = MediumGrey,
-            fontFamily = InterFamily,
-            fontSize   = 14.sp,
-            lineHeight = 22.sp,
-            textAlign  = androidx.compose.ui.text.style.TextAlign.Center
-        )
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            androidx.compose.foundation.Image(
+                painter = androidx.compose.ui.res.painterResource(com.bimarihaunter.R.drawable.ghost_waving),
+                contentDescription = null,
+                modifier = Modifier.size(80.dp)
+            )
+            Spacer(Modifier.height(16.dp))
+            Text(
+                message,
+                color      = MediumGrey,
+                fontFamily = InterFamily,
+                fontSize   = 14.sp,
+                lineHeight = 22.sp,
+                textAlign  = androidx.compose.ui.text.style.TextAlign.Center
+            )
+        }
+    }
+}
+
+
+
+// ─────────────────────────── QR Scanner Dialog ───────────────────────────────
+
+@Composable
+private fun QrScannerDialog(
+    onScanned: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val context       = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var scanned       by remember { mutableStateOf(false) }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MidnightBlack),
+            contentAlignment = Alignment.Center
+        ) {
+            // Camera preview
+            AndroidView(
+                modifier = Modifier.fillMaxSize(),
+                factory = { ctx ->
+                    val previewView = PreviewView(ctx)
+                    val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
+                    cameraProviderFuture.addListener({
+                        val cameraProvider = cameraProviderFuture.get()
+                        val preview = Preview.Builder().build().also {
+                            it.setSurfaceProvider(previewView.surfaceProvider)
+                        }
+                        val barcodeScanner = BarcodeScanning.getClient()
+                        val imageAnalysis = ImageAnalysis.Builder()
+                            .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                            .build()
+                        imageAnalysis.setAnalyzer(Executors.newSingleThreadExecutor()) { proxy ->
+                            if (scanned) { proxy.close(); return@setAnalyzer }
+                            val mediaImage = proxy.image
+                            if (mediaImage != null) {
+                                val image = InputImage.fromMediaImage(
+                                    mediaImage, proxy.imageInfo.rotationDegrees
+                                )
+                                barcodeScanner.process(image)
+                                    .addOnSuccessListener { barcodes ->
+                                        for (barcode in barcodes) {
+                                            if (barcode.format == Barcode.FORMAT_QR_CODE) {
+                                                val raw = barcode.rawValue ?: continue
+                                                if (!scanned) {
+                                                    scanned = true
+                                                    onScanned(raw)
+                                                }
+                                                break
+                                            }
+                                        }
+                                    }
+                                    .addOnCompleteListener { proxy.close() }
+                            } else {
+                                proxy.close()
+                            }
+                        }
+                        try {
+                            cameraProvider.unbindAll()
+                            cameraProvider.bindToLifecycle(
+                                lifecycleOwner,
+                                CameraSelector.DEFAULT_BACK_CAMERA,
+                                preview,
+                                imageAnalysis
+                            )
+                        } catch (e: Exception) {
+                            timber.log.Timber.e(e, "QR camera bind failed")
+                        }
+                    }, ContextCompat.getMainExecutor(ctx))
+                    previewView
+                }
+            )
+
+            // Overlay: viewfinder frame + close button
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    "Scan a friend's QR code",
+                    color = OffWhite,
+                    fontFamily = SpaceGroteskFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp
+                )
+                Spacer(Modifier.height(24.dp))
+                Box(
+                    modifier = Modifier
+                        .size(240.dp)
+                        .border(2.dp, LimeGreen, RoundedCornerShape(16.dp))
+                )
+                Spacer(Modifier.height(32.dp))
+                IconButton(
+                    onClick = onDismiss,
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .background(CharcoalGrey)
+                ) {
+                    Icon(Icons.Default.Close, "Close", tint = OffWhite)
+                }
+            }
+        }
     }
 }
