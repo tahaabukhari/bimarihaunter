@@ -1,0 +1,52 @@
+sequenceDiagram
+    participant RSS as RSS Feeds
+    participant BE as Cloud Run Backend
+    participant FS as Firestore /reports
+    participant APP as Android App
+    participant ROOM as Room DB
+    participant UI as Compose UI
+    participant GPS as Device GPS
+    participant FCM as FCM
+
+    Note over RSS,FCM: 🔄 Continuous Scrape Cycle
+
+    RSS->>BE: RSS feed articles (XML)
+    BE->>BE: Keyword classify disease & severity
+    BE->>BE: Geocode location → lat/lon
+    BE->>FS: Write OutbreakReport document
+
+    Note over FS,UI: 📡 Real-Time Sync to App
+
+    FS-->>APP: Firestore snapshot listener fires
+    APP->>APP: documentToEntity() mapping
+    APP->>ROOM: dao.insertAll(entities)
+    ROOM-->>UI: getCachedFeed() Flow emits
+    UI->>UI: Render feed cards / map pins / charts
+
+    Note over GPS,UI: 📍 Proximity Alert Flow
+
+    GPS->>APP: Location update (lat/lon)
+    APP->>ROOM: getAllReports()
+    loop For each cached report
+        APP->>APP: Haversine distance check
+        alt distance < 15km
+            APP->>UI: Show ghost_alert banner
+            APP->>FCM: Trigger local notification
+        end
+    end
+
+    Note over APP,FS: 👤 User Auth & Social Flow
+
+    APP->>FS: Firebase Auth sign-in
+    FS-->>APP: auth state change
+    APP->>FS: Read /users/{uid}
+    APP->>FS: Listen /chats & /direct_chats
+    FS-->>UI: Real-time message updates
+
+    Note over APP,BE: 🔁 Manual Refresh Flow
+
+    UI->>APP: User taps Refresh button
+    APP->>BE: POST /trigger-job (Bearer JWT)
+    BE->>RSS: Fetch latest feeds
+    BE->>FS: Write new reports
+    FS-->>APP: Snapshot listener fires (loop above)

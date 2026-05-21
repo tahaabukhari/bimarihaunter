@@ -1,0 +1,87 @@
+graph TB
+    subgraph BACKEND["☁️ Backend — Google Cloud Run"]
+        RSS["RSS Scraper\n(Pakistani & intl. health feeds)"]
+        CLASSIFY["AI Classifier\nrss-keyword-classifier-v2"]
+        GEO["Geocoder\n(location → lat/lon)"]
+        RSS -->|article text| CLASSIFY
+        CLASSIFY -->|locations| GEO
+    end
+
+    subgraph FIREBASE["🔥 Firebase"]
+        REPORTS["/reports\nFirestore Collection"]
+        USERS["/users\nFirestore Collection"]
+        CHATS["/chats & /direct_chats\nFirestore Collections"]
+        AUTH["Firebase Auth\n(email/password)"]
+        FCM["Firebase Cloud Messaging"]
+    end
+
+    subgraph ANDROID["📱 Android App"]
+        subgraph DATA["Data Layer"]
+            FEEDREPO["FeedRepository\n(Firestore → Room sync)"]
+            FBREPO["FirebaseRepository\n(users, chats, friends)"]
+            ROOM["Room DB\noutbreak_reports"]
+        end
+
+        subgraph VMS["ViewModels"]
+            FEEDVM["FeedViewModel"]
+            MAPVM["MapViewModel\n(proximity alerts)"]
+            AUTHVM["AuthViewModel"]
+            ADDVM["AddFriendsViewModel\n(UID / QR search)"]
+        end
+
+        subgraph UI["UI — Jetpack Compose"]
+            FEEDUI["Feed Screen"]
+            MAPUI["Map Screen\n(viewport pins)"]
+            INSUI["Insights Screen\n(live charts)"]
+            CHATUI["Chat Screens"]
+            PROFUI["Profile + QR Code"]
+        end
+
+        SLM["On-Device AI\nLlama 3.2 1B\nMediaPipe LLM Inference"]
+    end
+
+    GEO -->|writes classified report| REPORTS
+    REPORTS -->|real-time listener| FEEDREPO
+    FEEDREPO -->|cache| ROOM
+    FEEDREPO -->|StateFlow| FEEDVM
+    USERS <-->|read/write| FBREPO
+    CHATS <-->|real-time listener| FBREPO
+    AUTH -->|auth state| FBREPO
+    FCM -.->|push notifications| ANDROID
+    FEEDVM --> FEEDUI
+    FEEDVM --> INSUI
+    MAPVM --> MAPUI
+    AUTHVM --> PROFUI
+    FBREPO --> ADDVM
+    FBREPO --> CHATUI
+    ROOM -->|offline context| SLM
+    SLM --> CHATUI
+    ANDROID -.->|POST /trigger-job\nFirebase JWT| BACKEND
+
+    style BACKEND fill:#0f3460,stroke:#4ade80,color:#ffffff
+    style FIREBASE fill:#0f3460,stroke:#f59e0b,color:#ffffff
+    style ANDROID fill:#0f3460,stroke:#818cf8,color:#ffffff
+    style DATA fill:#162032,stroke:#818cf8,color:#ffffff
+    style VMS fill:#162032,stroke:#818cf8,color:#ffffff
+    style UI fill:#162032,stroke:#818cf8,color:#ffffff
+    style RSS fill:#1a1a2e,stroke:#4ade80,color:#4ade80
+    style CLASSIFY fill:#1a1a2e,stroke:#4ade80,color:#4ade80
+    style GEO fill:#1a1a2e,stroke:#4ade80,color:#4ade80
+    style REPORTS fill:#1a1a2e,stroke:#f59e0b,color:#f59e0b
+    style USERS fill:#1a1a2e,stroke:#f59e0b,color:#f59e0b
+    style CHATS fill:#1a1a2e,stroke:#f59e0b,color:#f59e0b
+    style AUTH fill:#1a1a2e,stroke:#f59e0b,color:#f59e0b
+    style FCM fill:#1a1a2e,stroke:#f59e0b,color:#f59e0b
+    style FEEDREPO fill:#1a1a2e,stroke:#818cf8,color:#818cf8
+    style FBREPO fill:#1a1a2e,stroke:#818cf8,color:#818cf8
+    style ROOM fill:#1a1a2e,stroke:#818cf8,color:#818cf8
+    style FEEDVM fill:#1a1a2e,stroke:#818cf8,color:#818cf8
+    style MAPVM fill:#1a1a2e,stroke:#818cf8,color:#818cf8
+    style AUTHVM fill:#1a1a2e,stroke:#818cf8,color:#818cf8
+    style ADDVM fill:#1a1a2e,stroke:#818cf8,color:#818cf8
+    style FEEDUI fill:#1a1a2e,stroke:#818cf8,color:#818cf8
+    style MAPUI fill:#1a1a2e,stroke:#818cf8,color:#818cf8
+    style INSUI fill:#1a1a2e,stroke:#818cf8,color:#818cf8
+    style CHATUI fill:#1a1a2e,stroke:#818cf8,color:#818cf8
+    style PROFUI fill:#1a1a2e,stroke:#818cf8,color:#818cf8
+    style SLM fill:#1a1a2e,stroke:#818cf8,color:#818cf8

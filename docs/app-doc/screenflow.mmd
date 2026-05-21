@@ -1,0 +1,51 @@
+flowchart TD
+    SPLASH["🌟 Splash Screen"] --> CHECK{First launch?}
+    CHECK -->|Yes| ONBOARD["📖 Onboarding"]
+    CHECK -->|No| AUTH{Logged in?}
+    ONBOARD --> LOGIN
+    AUTH -->|No| LOGIN["🔐 Login Screen"]
+    AUTH -->|Yes| HOME
+
+    LOGIN --> SIGNUP["📝 Sign Up"]
+    LOGIN --> FORGOT["🔑 Forgot Password"]
+    LOGIN --> HOME
+
+    HOME["🏠 Home Feed\n(FeedScreen)"] --> ARTICLE["📄 Article Detail"]
+    HOME --> SEARCH["🔍 Search & Filter"]
+    HOME --> PREFS["⚙️ Feed Preferences"]
+
+    NAV["Bottom Navigation Bar"] --> HOME
+    NAV --> MAP
+    NAV --> INSIGHTS
+    NAV --> CHAT
+    NAV --> PROFILE
+
+    MAP["🗺️ Disease Map\n(MapScreen)"] --> MAPDETAIL["📍 Map Detail\n(outbreak info)"]
+    MAP -->|15km proximity| ALERT["👻 Ghost Alert Banner\n+ System Notification"]
+
+    INSIGHTS["📊 Insights Screen\n(live charts)"] --> ALERTS["🚨 Alerts Screen"]
+
+    CHAT["💬 Chat List"] --> GROUP["👥 Group Chat"]
+    CHAT --> DIRECT["💌 Direct Chat"]
+    CHAT --> AICHAT["🤖 AI Chat\n(offline Llama 3.2)"]
+    CHAT --> ADDFRIENDS["👋 Add Friends"]
+    CHAT --> CREATEGROUP["➕ Create Group"]
+
+    ADDFRIENDS --> QR["📷 QR Scanner\n(CameraX + ML Kit)"]
+    ADDFRIENDS --> UIDLOOKUP["🔍 UID Direct Lookup"]
+
+    PROFILE["👤 Profile Screen"] --> SETTINGS["⚙️ Settings"]
+    PROFILE --> QRCODE["📱 My QR Code\n(shareable UID)"]
+    PROFILE -->|No network| OFFLINE["📵 Offline Screen\n(ghost_sleep)"]
+
+    style SPLASH fill:#0f3460,stroke:#818cf8,color:#ffffff
+    style HOME fill:#0f3460,stroke:#4ade80,color:#ffffff
+    style MAP fill:#0f3460,stroke:#4ade80,color:#ffffff
+    style INSIGHTS fill:#0f3460,stroke:#4ade80,color:#ffffff
+    style CHAT fill:#0f3460,stroke:#4ade80,color:#ffffff
+    style PROFILE fill:#0f3460,stroke:#4ade80,color:#ffffff
+    style ALERT fill:#7f1d1d,stroke:#ef4444,color:#ffffff
+    style AICHAT fill:#1e1b4b,stroke:#818cf8,color:#ffffff
+    style NAV fill:#162032,stroke:#f59e0b,color:#f59e0b
+    style QR fill:#162032,stroke:#818cf8,color:#ffffff
+    style OFFLINE fill:#162032,stroke:#6b7280,color:#9ca3af

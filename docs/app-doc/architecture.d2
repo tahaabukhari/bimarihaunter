@@ -1,0 +1,248 @@
+direction: right
+
+title: BimariHaunter — System Architecture {
+  near: top-center
+  style.font-size: 22
+  style.bold: true
+}
+
+# ── BACKEND ──────────────────────────────────────────────────────────────────
+backend: Backend {
+  style.fill: "#1a1a2e"
+  style.stroke: "#4ade80"
+  style.font-color: "#ffffff"
+  style.border-radius: 12
+
+  scraper: RSS Scraper {
+    style.fill: "#0f3460"
+    style.stroke: "#4ade80"
+    style.font-color: "#ffffff"
+    style.border-radius: 8
+  }
+
+  classifier: AI Classifier\n(rss-keyword-classifier-v2) {
+    style.fill: "#0f3460"
+    style.stroke: "#4ade80"
+    style.font-color: "#ffffff"
+    style.border-radius: 8
+  }
+
+  geocoder: Geocoder {
+    style.fill: "#0f3460"
+    style.stroke: "#4ade80"
+    style.font-color: "#ffffff"
+    style.border-radius: 8
+  }
+
+  cloudrun: Google Cloud Run {
+    style.fill: "#162032"
+    style.stroke: "#4ade80"
+    style.font-color: "#4ade80"
+    style.border-radius: 8
+    style.font-size: 11
+  }
+
+  scraper -> classifier: article text
+  classifier -> geocoder: locations[]
+}
+
+# ── FIREBASE ─────────────────────────────────────────────────────────────────
+firebase: Firebase {
+  style.fill: "#1a1a2e"
+  style.stroke: "#f59e0b"
+  style.font-color: "#ffffff"
+  style.border-radius: 12
+
+  firestore: Cloud Firestore {
+    style.fill: "#0f3460"
+    style.stroke: "#f59e0b"
+    style.font-color: "#ffffff"
+    style.border-radius: 8
+
+    reports: /reports {
+      style.fill: "#162032"
+      style.stroke: "#f59e0b"
+      style.font-color: "#f59e0b"
+      style.border-radius: 6
+    }
+    users: /users {
+      style.fill: "#162032"
+      style.stroke: "#f59e0b"
+      style.font-color: "#f59e0b"
+      style.border-radius: 6
+    }
+    chats: /chats & /direct_chats {
+      style.fill: "#162032"
+      style.stroke: "#f59e0b"
+      style.font-color: "#f59e0b"
+      style.border-radius: 6
+    }
+  }
+
+  auth: Firebase Auth {
+    style.fill: "#0f3460"
+    style.stroke: "#f59e0b"
+    style.font-color: "#ffffff"
+    style.border-radius: 8
+  }
+
+  fcm: Firebase Cloud Messaging {
+    style.fill: "#0f3460"
+    style.stroke: "#f59e0b"
+    style.font-color: "#ffffff"
+    style.border-radius: 8
+  }
+}
+
+# ── ANDROID APP ──────────────────────────────────────────────────────────────
+app: Android App {
+  style.fill: "#1a1a2e"
+  style.stroke: "#818cf8"
+  style.font-color: "#ffffff"
+  style.border-radius: 12
+
+  data: Data Layer {
+    style.fill: "#0f3460"
+    style.stroke: "#818cf8"
+    style.font-color: "#ffffff"
+    style.border-radius: 8
+
+    feedrepo: FeedRepository {
+      style.fill: "#162032"
+      style.stroke: "#818cf8"
+      style.font-color: "#818cf8"
+      style.border-radius: 6
+    }
+    firebaserepo: FirebaseRepository {
+      style.fill: "#162032"
+      style.stroke: "#818cf8"
+      style.font-color: "#818cf8"
+      style.border-radius: 6
+    }
+    room: Room DB\n(outbreak_reports) {
+      style.fill: "#162032"
+      style.stroke: "#818cf8"
+      style.font-color: "#818cf8"
+      style.border-radius: 6
+    }
+  }
+
+  domain: ViewModels {
+    style.fill: "#0f3460"
+    style.stroke: "#818cf8"
+    style.font-color: "#ffffff"
+    style.border-radius: 8
+
+    feedvm: FeedViewModel {
+      style.fill: "#162032"
+      style.stroke: "#818cf8"
+      style.font-color: "#818cf8"
+      style.border-radius: 6
+    }
+    mapvm: MapViewModel {
+      style.fill: "#162032"
+      style.stroke: "#818cf8"
+      style.font-color: "#818cf8"
+      style.border-radius: 6
+    }
+    authvm: AuthViewModel {
+      style.fill: "#162032"
+      style.stroke: "#818cf8"
+      style.font-color: "#818cf8"
+      style.border-radius: 6
+    }
+  }
+
+  ui: UI (Jetpack Compose) {
+    style.fill: "#0f3460"
+    style.stroke: "#818cf8"
+    style.font-color: "#ffffff"
+    style.border-radius: 8
+
+    feed: Feed Screen {
+      style.fill: "#162032"
+      style.stroke: "#818cf8"
+      style.font-color: "#818cf8"
+      style.border-radius: 6
+    }
+    map: Map Screen {
+      style.fill: "#162032"
+      style.stroke: "#818cf8"
+      style.font-color: "#818cf8"
+      style.border-radius: 6
+    }
+    insights: Insights Screen {
+      style.fill: "#162032"
+      style.stroke: "#818cf8"
+      style.font-color: "#818cf8"
+      style.border-radius: 6
+    }
+    chat: Chat Screens {
+      style.fill: "#162032"
+      style.stroke: "#818cf8"
+      style.font-color: "#818cf8"
+      style.border-radius: 6
+    }
+    profile: Profile Screen {
+      style.fill: "#162032"
+      style.stroke: "#818cf8"
+      style.font-color: "#818cf8"
+      style.border-radius: 6
+    }
+  }
+
+  slm: On-Device AI\n(Llama 3.2 1B\nvia MediaPipe) {
+    style.fill: "#0f3460"
+    style.stroke: "#818cf8"
+    style.font-color: "#ffffff"
+    style.border-radius: 8
+  }
+
+  data.feedrepo -> data.room: cache
+  data.feedrepo -> domain.feedvm: StateFlow
+  data.firebaserepo -> domain.authvm: StateFlow
+  domain.feedvm -> ui.feed
+  domain.mapvm -> ui.map
+  domain.authvm -> ui.profile
+  domain.feedvm -> ui.insights
+  data.room -> slm: context for offline AI
+  slm -> ui.chat: AI responses
+}
+
+# ── CONNECTIONS ───────────────────────────────────────────────────────────────
+backend.geocoder -> firebase.firestore.reports: writes classified report {
+  style.stroke: "#4ade80"
+  style.stroke-width: 2
+}
+
+firebase.firestore.reports -> app.data.feedrepo: real-time listener {
+  style.stroke: "#f59e0b"
+  style.stroke-width: 2
+}
+
+firebase.firestore.users -> app.data.firebaserepo: read/write {
+  style.stroke: "#f59e0b"
+  style.stroke-width: 1
+}
+
+firebase.firestore.chats -> app.data.firebaserepo: real-time listener {
+  style.stroke: "#f59e0b"
+  style.stroke-width: 1
+}
+
+firebase.auth -> app.data.firebaserepo: auth state {
+  style.stroke: "#f59e0b"
+  style.stroke-width: 1
+}
+
+firebase.fcm -> app.ui.feed: push notifications {
+  style.stroke: "#f59e0b"
+  style.stroke-width: 1
+  style.stroke-dash: 4
+}
+
+app.data.feedrepo -> backend.cloudrun: POST /trigger-job\n(Firebase JWT) {
+  style.stroke: "#818cf8"
+  style.stroke-width: 1
+  style.stroke-dash: 4
+}
