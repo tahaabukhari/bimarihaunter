@@ -612,35 +612,17 @@ class FirebaseRepository {
                 seedAlerts.forEach { db.collection("alerts").add(it) }
             }
         }
-        // Seed Chats
-        db.collection("chats").limit(1).get().addOnSuccessListener { snapshot ->
-            if (snapshot.isEmpty) {
-                val seedChats = listOf(
-                    ChatGroup("dengue_lahore", "Dengue Watch — Lahore", "Fumigation team is active in Gulberg.", "2m ago", "Outbreak", "CRITICAL"),
-                    ChatGroup("flood_sindh", "Flood Rescue — Sindh", "Boats deployed to Badin district.", "15m ago", "Disaster", "WARNING"),
-                    ChatGroup("bimari_ai", "Bimarihaunter AI", "Ask me anything about symptoms.", "1h ago", "Assistant", "INFO")
-                )
-                seedChats.forEach { chat ->
-                    db.collection("chats").document(chat.id).set(chat).addOnSuccessListener {
-                        if (chat.id == "dengue_lahore") {
-                            val seedMessages = listOf(
-                                Message("", "system", "System", "Welcome to Dengue Watch group.", 1716120000000, true),
-                                Message("", "user1", "Ahmad Khan", "Are there fumigation drives planned in Model Town?", 1716120100000, false),
-                                Message("", "user2", "Dr. Fatima Zahra", "Yes, DHA and Model Town are scheduled for tomorrow morning.", 1716120200000, false),
-                                Message("", "user1", "Ahmad Khan", "Great, thanks for the update doctor!", 1716120300000, false)
-                            )
-                            seedMessages.forEach { msg ->
-                                db.collection("chats").document(chat.id).collection("messages").add(msg)
-                            }
-                        } else if (chat.id == "bimari_ai") {
-                            val seedMessages = listOf(
-                                Message("", "ai", "Bimarihaunter AI", "Hello! I am your AI health assistant. Ask me about symptoms, precautions, or outbreaks.", 1716120000000, false)
-                            )
-                            seedMessages.forEach { msg ->
-                                db.collection("chats").document(chat.id).collection("messages").add(msg)
-                            }
-                        }
+        // Clean up legacy filler/seed chats that were auto-created in earlier builds.
+        // These 3 IDs were never real user-created groups — remove them permanently.
+        listOf("dengue_lahore", "flood_sindh", "bimari_ai").forEach { chatId ->
+            val chatRef = db.collection("chats").document(chatId)
+            chatRef.get().addOnSuccessListener { doc ->
+                if (doc.exists()) {
+                    chatRef.collection("messages").get().addOnSuccessListener { msgs ->
+                        msgs.documents.forEach { it.reference.delete() }
                     }
+                    chatRef.delete()
+                    Timber.d("Removed legacy seed chat: $chatId")
                 }
             }
         }
