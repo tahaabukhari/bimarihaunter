@@ -2,6 +2,7 @@ package com.bimarihaunter.ui.screens.auth
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
@@ -96,7 +97,10 @@ fun OnboardingScreen(
                     Image(
                         painter = painterResource(id = pages[page].imageRes),
                         contentDescription = pages[page].title,
-                        modifier = Modifier.size(220.dp)
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier
+                            .fillMaxWidth(0.82f)
+                            .aspectRatio(1f)
                     )
 
                     Spacer(modifier = Modifier.height(48.dp))

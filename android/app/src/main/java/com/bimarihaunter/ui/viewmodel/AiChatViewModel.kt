@@ -16,34 +16,31 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.UUID
 
-enum class ChatMode {
-    THINKING,
-    SIMPLE
-}
+enum class ChatMode { THINKING, SIMPLE }
 
 data class AiMessage(
-    val id: String,
+    val id: String = UUID.randomUUID().toString(),
     val message: String,
     val isUser: Boolean,
-    val quickReplies: List<String> = emptyList()
+    val quickReplies: List<String> = emptyList(),
+    val isTyping: Boolean = false
 )
 
-/**
- * ViewModel for the Haunter AI chat screen.
- *
- * Crash-hardened & API Fallback optimized:
- *  - Automatically falls back to Room database context when the local Python backend
- *    at 10.0.2.2 is unreachable (e.g., when testing on a physical phone).
- *  - Pulls the latest live-synced Firestore outbreak reports directly from the database
- *    to provide smart, localized public health advice even without a running server.
- */
 class AiChatViewModel(application: Application) : AndroidViewModel(application) {
 
     private val database = BimarihaunterDatabase.getDatabase(application)
 
-    // ── State ────────────────────────────────────────────────────────────────
-
-    private val _messages = MutableStateFlow<List<AiMessage>>(emptyList())
+    // Initialised with welcome message so list is NEVER empty on first render — prevents crash
+    private val _messages = MutableStateFlow<List<AiMessage>>(
+        listOf(
+            AiMessage(
+                id           = "welcome",
+                message      = "Assalam o Alaikum! 👋 I'm Haunter AI, your health assistant.\n\nAsk me about symptoms, disease prevention, or nearby outbreaks in Pakistan.",
+                isUser       = false,
+                quickReplies = listOf("Prevention tips", "Nearest hospital", "Current outbreaks", "Dengue symptoms")
+            )
+        )
+    )
     val messages: StateFlow<List<AiMessage>> = _messages.asStateFlow()
 
     private val _chatMode = MutableStateFlow(ChatMode.THINKING)
@@ -55,205 +52,148 @@ class AiChatViewModel(application: Application) : AndroidViewModel(application) 
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
-    // ── Init ─────────────────────────────────────────────────────────────────
-
-    init {
-        viewModelScope.launch {
-            appendMessage(
-                AiMessage(
-                    id           = UUID.randomUUID().toString(),
-                    message      = "Assalam o Alaikum! 👋 I'm Haunter AI, your health assistant. " +
-                                   "Ask me about symptoms, prevention, or nearby outbreaks.",
-                    isUser       = false,
-                    quickReplies = listOf("Prevention tips", "Nearest hospital", "Current outbreaks")
-                )
-            )
-        }
-    }
-
-    // ── Public API ───────────────────────────────────────────────────────────
-
     fun sendMessage(text: String) {
         if (text.isBlank()) return
         val trimmed = text.trim()
-
-        appendMessage(
-            AiMessage(
-                id      = UUID.randomUUID().toString(),
-                message = trimmed,
-                isUser  = true
-            )
-        )
+        addMessage(AiMessage(message = trimmed, isUser = true))
 
         viewModelScope.launch {
-            _isLoading.value  = true
+            _isLoading.value    = true
             _errorMessage.value = null
+            val typingId = UUID.randomUUID().toString()
+            addMessage(AiMessage(id = typingId, message = "…", isUser = false, isTyping = true))
             try {
                 val reply = fetchAiReply(trimmed)
-                appendMessage(
+                _messages.value = _messages.value.filter { it.id != typingId } +
                     AiMessage(
-                        id           = UUID.randomUUID().toString(),
                         message      = reply,
                         isUser       = false,
-                        quickReplies = listOf("How to prevent?", "What are the symptoms?", "Where to get help?")
+                        quickReplies = buildQuickReplies(trimmed)
                     )
-                )
             } catch (t: Throwable) {
                 Log.e(TAG, "AI reply failed", t)
-                _errorMessage.value = "Unable to reach Haunter AI. Check your connection."
-                appendMessage(
+                _messages.value = _messages.value.filter { it.id != typingId } +
                     AiMessage(
-                        id      = UUID.randomUUID().toString(),
-                        message = "I couldn't reach the server right now. Please check your internet and try again.",
+                        message = "I couldn't reach the server right now. Please check your internet connection and try again.",
                         isUser  = false
                     )
-                )
+                _errorMessage.value = "Unable to reach Haunter AI."
             } finally {
                 _isLoading.value = false
             }
         }
     }
 
-    fun setChatMode(mode: ChatMode) {
-        _chatMode.value = mode
+    fun setChatMode(mode: ChatMode) { _chatMode.value = mode }
+    fun clearError() { _errorMessage.value = null }
+
+    private fun addMessage(msg: AiMessage) {
+        _messages.value = _messages.value + msg
     }
 
-    // ── Private helpers ──────────────────────────────────────────────────────
+    private fun buildQuickReplies(query: String): List<String> {
+        val q = query.lowercase()
+        return when {
+            q.contains("dengue") || q.contains("malaria") || q.contains("mosquito") ->
+                listOf("How to prevent?", "What are symptoms?", "Nearest hospital")
+            q.contains("hospital") || q.contains("doctor") ->
+                listOf("Emergency numbers", "Prevention tips", "Current outbreaks")
+            q.contains("prevent") || q.contains("safety") ->
+                listOf("Dengue prevention", "Water safety", "Vaccination info")
+            else -> listOf("How to prevent?", "What are symptoms?", "Where to get help?")
+        }
+    }
 
     private suspend fun fetchAiReply(query: String): String = withContext(Dispatchers.IO) {
         when (_chatMode.value) {
             ChatMode.THINKING -> fetchBackendReply(query)
-            ChatMode.SIMPLE   -> generateSimpleReply(query, null)
+            ChatMode.SIMPLE   -> generateSimpleReply(query)
         }
     }
 
-    /**
-     * Calls the BimariHaunter backend which runs the Gemini agentic workflow
-     * server-side. Falls back to a local intelligent reply using Room database context
-     * if the backend is unreachable.
-     */
     private suspend fun fetchBackendReply(query: String): String {
         return try {
-            val prompt = buildPrompt(query)
             val response = RetrofitClient.apiService.sendMessage(
                 chatId = "default_chat_session",
                 mode   = "smart",
-                body   = ChatMessageRequest(text = prompt)
+                body   = ChatMessageRequest(text = buildPrompt(query))
             )
-            response.response.ifBlank {
-                generateLocalIntelligentReply(query)
-            }
+            response.response.ifBlank { generateLocalIntelligentReply(query) }
         } catch (t: Throwable) {
-            Log.w(TAG, "Backend call failed — falling back to localized database-driven intelligence", t)
+            Log.w(TAG, "Backend unreachable — using local DB intelligence", t)
             generateLocalIntelligentReply(query)
         }
     }
 
-    /**
-     * Generates a smart response using actual synced outbreak data stored in the local SQLite Room DB.
-     * This allows the AI to provide authentic, localized reports without an active backend server.
-     */
-    private suspend fun generateLocalIntelligentReply(query: String): String = withContext(Dispatchers.IO) {
-        try {
-            val reports = database.outbreakReportDao().getAllReports().first()
-            if (reports.isNotEmpty()) {
-                val q = query.lowercase()
-                
-                // Match disease in user query to local reports
-                val matchedReport = reports.firstOrNull { report ->
-                    q.contains(report.disease.lowercase()) || q.contains(report.title.lowercase())
-                } ?: reports.first() // Fallback to latest critical report if no direct match
+    private suspend fun generateLocalIntelligentReply(query: String): String =
+        withContext(Dispatchers.IO) {
+            try {
+                val reports = database.outbreakReportDao().getAllReports().first()
+                if (reports.isNotEmpty()) {
+                    val q = query.lowercase()
+                    val matched = reports.firstOrNull { r ->
+                        q.contains(r.disease.lowercase()) ||
+                        r.title.lowercase().split(" ").any { q.contains(it) && it.length > 3 }
+                    } ?: reports.first()
 
-                val severityEmoji = when (matchedReport.severity.uppercase()) {
-                    "CRITICAL" -> "🚨"
-                    "HIGH" -> "⚠️"
-                    else -> "ℹ️"
+                    val emoji = when (matched.severity.uppercase()) {
+                        "CRITICAL" -> "🚨"; "HIGH" -> "⚠️"; else -> "ℹ️"
+                    }
+                    val locations = matched.locations.joinToString(", ").ifEmpty { "your region" }
+                    val summary   = matched.summary.joinToString(". ").ifEmpty { matched.raw_text.take(200) }
+
+                    return@withContext """
+$emoji *Active Local Report Detected*
+
+• *Disease:* ${matched.disease.replaceFirstChar { it.uppercase() }}
+• *Source:* ${matched.source} (${matched.severity.uppercase()})
+• *Location:* $locations
+• *Details:* $summary
+
+*Precautionary Steps:* Stay updated with the BimariHaunter feed, avoid contaminated areas, boil drinking water, and report new symptoms to local authorities.
+                    """.trimIndent()
                 }
-
-                val locationsText = matchedReport.locations.joinToString(", ").ifEmpty { "your region" }
-                val summaryText = matchedReport.summary.joinToString(". ").ifEmpty { matchedReport.raw_text.take(150) }
-
-                return@withContext """
-                    $severityEmoji *Active Local Report Detected:*
-                    I found a matching outbreak record in our local database:
-                    
-                    • *Disease:* ${matchedReport.disease.replaceFirstChar { it.uppercase() }}
-                    • *Source:* ${matchedReport.source} (Severity: ${matchedReport.severity.uppercase()})
-                    • *Location:* $locationsText
-                    • *Details:* $summaryText
-                    
-                    *Precautionary Health Guidelines:*
-                    Please stay updated with the BimariHaunter feed. Avoid contaminated areas, ensure drinking water is boiled, and report new symptoms to local authorities immediately.
-                """.trimIndent()
+            } catch (e: Exception) {
+                Log.w(TAG, "Local DB intelligence failed", e)
             }
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to generate localized DB intelligence", e)
+            generateSimpleReply(query)
         }
 
-        // Ultimate fallback to rule-based engine if database is empty
-        return@withContext generateSimpleReply(query, "smart_mode_fallback")
-    }
-
-    /**
-     * Fully offline fallback — no model required, just a rule-based response.
-     * Keeps the chat usable even without internet or a backend.
-     */
-    private fun generateSimpleReply(query: String, contextTag: String?): String {
+    private fun generateSimpleReply(query: String): String {
         val q = query.lowercase()
-        val suffix = ""
-
-        val mainReply = when {
+        return when {
             q.contains("fever") || q.contains("bukhar") ->
-                "🌡️ Fever can signal infections like dengue, malaria, or typhoid in Pakistan. " +
-                "Stay hydrated, rest, and consult a doctor if it exceeds 38.5°C or lasts more than 2 days."
-
+                "🌡️ *Fever* can signal dengue, malaria, or typhoid.\n\nStay hydrated, rest, and see a doctor if it exceeds 38.5°C or lasts more than 2 days."
             q.contains("dengue") ->
-                "🦟 Dengue is mosquito-borne. Use repellents, wear long sleeves, and eliminate standing water. " +
-                "Seek urgent care for platelet drops, severe headache, or bleeding."
-
+                "🦟 *Dengue* is mosquito-borne.\n\n• Use repellents and wear long sleeves\n• Eliminate standing water\n• Seek urgent care for platelet drops or severe headache"
             q.contains("malaria") ->
-                "🦟 Malaria spreads through mosquito bites. Take prescribed prophylactics if travelling. " +
-                "Symptoms include cyclical fever, chills, and sweats — see a doctor immediately."
-
+                "🦟 *Malaria* spreads through mosquito bites.\n\nSymptoms: cyclical fever, chills, sweats. See a doctor immediately if suspected."
             q.contains("cholera") || q.contains("diarrhea") || q.contains("diarrhoea") ->
-                "💧 Drink only clean/boiled water. Use ORS immediately for dehydration. " +
-                "Cholera spreads fast — report clusters to local health authorities."
-
-            q.contains("hospital") || q.contains("doctor") ->
-                "🏥 For emergencies dial **1122** (Punjab) or **115** (Rescue). " +
-                "Nearest government hospitals are usually the fastest option for critical care."
-
+                "💧 *Cholera / Diarrhoea*\n\n• Drink only boiled or filtered water\n• Use ORS for dehydration\n• Report clusters to local health authorities"
+            q.contains("hospital") || q.contains("doctor") || q.contains("emergency") ->
+                "🏥 *Emergency Numbers*\n\n• Rescue Punjab: **1122**\n• Edhi Foundation: **115**\n• Aman Foundation (Karachi): **021-111-AMAN**"
             q.contains("prevent") || q.contains("safety") ->
-                "🛡️ Key prevention steps:\n• Wash hands frequently\n• Drink boiled or filtered water\n" +
-                "• Use mosquito nets at night\n• Keep surroundings clean\n• Get vaccinations up to date"
-
+                "🛡️ *Prevention*\n\n• Wash hands frequently\n• Drink boiled or filtered water\n• Use mosquito nets at night\n• Keep vaccinations up to date"
             q.contains("outbreak") || q.contains("alert") ->
-                "📊 Check the BimariHaunter feed and map for real-time outbreak reports in your area. " +
-                "Stay indoors during high-severity alerts."
-
+                "📊 Check the *BimariHaunter feed and map* for real-time outbreak reports in your area."
+            q.contains("polio") ->
+                "💉 *Polio* is vaccine-preventable. Ensure all children under 5 receive the oral polio vaccine (OPV)."
+            q.contains("hepatitis") ->
+                "🩸 *Hepatitis* spreads via contaminated water and blood.\n\n• Get vaccinated for Hep A and B\n• Avoid sharing needles\n• Use clean water and cooked food"
+            q.contains("water") || q.contains("pani") ->
+                "💧 *Water Safety*\n\n• Always boil or filter tap water\n• Avoid ice made from tap water\n• Contaminated water causes cholera, typhoid, and hepatitis A"
             else ->
-                "🩺 I'm Haunter AI. While offline, I can answer basic health questions. " +
-                "For real-time outbreak data, enable internet and switch to **Thinking** mode."
+                "🩺 I'm *Haunter AI*, your offline health assistant.\n\nAsk me about dengue, malaria, cholera, fever, prevention, and more.\n\nFor real-time data, switch to **Thinking** mode."
         }
-
-        return mainReply + suffix
     }
 
     private fun buildPrompt(userQuery: String): String = """
-        You are Haunter AI, a friendly health advisor for BimariHaunter.
-        Help users understand disease outbreaks, prevention, and health tips in Pakistan.
-        Be concise (under 150 words), empathetic, and always recommend professional care for serious concerns.
-        
-        USER QUERY: $userQuery
-        
-        RESPONSE:
+You are Haunter AI, a friendly health advisor for BimariHaunter — a public health surveillance app for Pakistan.
+Help users understand disease outbreaks, symptoms, and prevention. Be concise (under 150 words), empathetic, and always recommend professional care for serious concerns.
+
+USER QUERY: $userQuery
+RESPONSE:
     """.trimIndent()
 
-    private fun appendMessage(message: AiMessage) {
-        _messages.value = _messages.value + message
-    }
-
-    companion object {
-        private const val TAG = "AiChatViewModel"
-    }
+    companion object { private const val TAG = "AiChatViewModel" }
 }

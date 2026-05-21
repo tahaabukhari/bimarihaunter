@@ -249,19 +249,22 @@ fun MapScreen(viewModel: MapViewModel) {
                 // Real stat boxes from actual data
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     StatBox(
                         value = insights.nearbyCount.toString(),
-                        label = "Nearby (25km)"
+                        label = "Nearby (25km)",
+                        modifier = Modifier.weight(1f)
                     )
                     StatBox(
                         value = insights.highSeverityCount.toString(),
-                        label = "High Severity"
+                        label = "High Severity",
+                        modifier = Modifier.weight(1f)
                     )
                     StatBox(
                         value = insights.uniqueDiseases.toString(),
-                        label = "Disease Types"
+                        label = "Disease Types",
+                        modifier = Modifier.weight(1f)
                     )
                 }
 

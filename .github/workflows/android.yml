@@ -27,6 +27,13 @@ jobs:
             ~/.gradle/wrapper
           key: gradle-${{ hashFiles('android/**/*.gradle.kts', 'android/gradle/wrapper/gradle-wrapper.properties') }}
 
+      - name: Restore debug keystore
+        env:
+          DEBUG_KEYSTORE: ${{ secrets.DEBUG_KEYSTORE }}
+        run: |
+          mkdir -p ~/.android
+          echo "$DEBUG_KEYSTORE" | base64 -d > ~/.android/debug.keystore
+
       - name: Make gradlew executable
         run: chmod +x android/gradlew
 

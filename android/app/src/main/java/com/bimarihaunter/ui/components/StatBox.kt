@@ -9,6 +9,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bimarihaunter.ui.theme.*
@@ -23,7 +25,7 @@ fun StatBox(
         modifier = modifier
             .clip(RoundedCornerShape(14.dp))
             .background(MidnightBlack)
-            .padding(16.dp),
+            .padding(horizontal = 8.dp, vertical = 14.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
@@ -31,14 +33,21 @@ fun StatBox(
             color = LimeGreen,
             fontFamily = SpaceGroteskFamily,
             fontWeight = FontWeight.Bold,
-            fontSize = 24.sp
+            fontSize = 22.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center
         )
         Spacer(modifier = Modifier.height(4.dp))
         Text(
             text = label,
             color = MediumGrey,
             fontFamily = InterFamily,
-            fontSize = 12.sp
+            fontSize = 11.sp,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
+            lineHeight = 15.sp
         )
     }
 }

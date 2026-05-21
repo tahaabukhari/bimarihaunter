@@ -21,83 +21,100 @@ class FirebaseRepository {
         seedDatabaseIfEmpty()
     }
 
-    // Real-time Flow for News
-    // Reads from the 'reports' collection written by the RSS scraper.
-    // Falls back to the legacy 'news' seed collection if reports is empty.
+    // Real-time Flow for News.
+    // Priority chain:
+    //   1. users/{uid}/feed  — personalised, fan-out by backend scraper
+    //   2. /reports          — all scraped articles (fallback live listener)
+    //   3. /news             — legacy seed articles (one-shot fallback)
     fun getNews(): Flow<List<NewsArticle>> = callbackFlow {
         val uid = FirebaseAuth.getInstance().currentUser?.uid
 
-        // Primary: user-personalised feed subcollection
-        val collectionRef = if (!uid.isNullOrBlank())
+        fun mapDoc(doc: com.google.firebase.firestore.DocumentSnapshot): NewsArticle? {
+            val data = doc.data ?: return null
+            val title = data["title"] as? String ?: return null
+            val source = data["source"] as? String ?: "BimariHaunter"
+            val rawText = data["raw_text"] as? String ?: ""
+            val ai = data["ai_analysis"] as? Map<*, *>
+            val disease = (ai?.get("disease") as? String ?: "Health").replaceFirstChar { it.uppercase() }
+            val severityRaw = (ai?.get("severity") as? String ?: "medium").lowercase()
+            val severity = when (severityRaw) {
+                "critical", "high" -> "CRITICAL"
+                "medium", "moderate" -> "WARNING"
+                else -> "INFO"
+            }
+            val location = (ai?.get("locations") as? List<*>)
+                ?.mapNotNull { it as? String }?.firstOrNull() ?: "Pakistan"
+            val publishedAt = when (val v = data["published_at"]) {
+                is Timestamp -> {
+                    val diff = System.currentTimeMillis() - v.toDate().time
+                    when {
+                        diff < 3_600_000 -> "${diff / 60_000}m ago"
+                        diff < 86_400_000 -> "${diff / 3_600_000}h ago"
+                        else -> "${diff / 86_400_000}d ago"
+                    }
+                }
+                is String -> v
+                else -> ""
+            }
+            return NewsArticle(
+                id = doc.id, category = disease, source = source,
+                timestamp = publishedAt, title = title,
+                content = rawText.take(200), location = location, severity = severity
+            )
+        }
+
+        var fallbackListener: com.google.firebase.firestore.ListenerRegistration? = null
+
+        // ── Primary: users/{uid}/feed live listener ──────────────────────────────
+        val primaryRef = if (!uid.isNullOrBlank())
             db.collection("users").document(uid).collection("feed")
         else
             db.collection("reports")
 
-        val listener = collectionRef
+        val primaryListener = primaryRef
             .orderBy("published_at", Query.Direction.DESCENDING)
             .limit(50)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
-                    Timber.e(error, "getNews (reports) failed — emitting empty list")
-                    trySend(emptyList())
+                    Timber.e(error, "getNews primary listener failed")
                     return@addSnapshotListener
                 }
-                val docs = snapshot?.documents ?: emptyList()
-                val articles = docs.mapNotNull { doc ->
-                    val data = doc.data ?: return@mapNotNull null
-                    val title = data["title"] as? String ?: return@mapNotNull null
-                    val source = data["source"] as? String ?: "BimariHaunter"
-                    val url = data["url"] as? String ?: ""
-                    val rawText = data["raw_text"] as? String ?: ""
-                    val ai = data["ai_analysis"] as? Map<*, *>
-                    val disease = (ai?.get("disease") as? String ?: "Health").replaceFirstChar { it.uppercase() }
-                    val severityRaw = (ai?.get("severity") as? String ?: "medium").lowercase()
-                    val severity = when (severityRaw) {
-                        "critical", "high" -> "CRITICAL"
-                        "medium", "moderate" -> "WARNING"
-                        else -> "INFO"
-                    }
-                    val locations = (ai?.get("locations") as? List<*>)
-                        ?.mapNotNull { it as? String } ?: emptyList()
-                    val location = locations.firstOrNull() ?: "Pakistan"
-                    val publishedAt = when (val v = data["published_at"]) {
-                        is com.google.firebase.Timestamp -> {
-                            val ms = v.toDate().time
-                            val diff = System.currentTimeMillis() - ms
-                            when {
-                                diff < 3_600_000 -> "${diff / 60_000}m ago"
-                                diff < 86_400_000 -> "${diff / 3_600_000}h ago"
-                                else -> "${diff / 86_400_000}d ago"
+                val articles = snapshot?.documents?.mapNotNull { mapDoc(it) } ?: emptyList()
+                if (articles.isNotEmpty()) {
+                    // Cancel fallback if primary now has data
+                    fallbackListener?.remove()
+                    fallbackListener = null
+                    trySend(articles)
+                } else if (!uid.isNullOrBlank() && fallbackListener == null) {
+                    // User feed empty — attach live listener on root /reports
+                    fallbackListener = db.collection("reports")
+                        .orderBy("published_at", Query.Direction.DESCENDING)
+                        .limit(50)
+                        .addSnapshotListener { fbSnap, fbErr ->
+                            if (fbErr != null) {
+                                Timber.e(fbErr, "getNews reports fallback failed")
+                                return@addSnapshotListener
+                            }
+                            val fbArticles = fbSnap?.documents
+                                ?.mapNotNull { mapDoc(it) } ?: emptyList()
+                            if (fbArticles.isNotEmpty()) {
+                                trySend(fbArticles)
+                            } else {
+                                // Last resort: legacy /news seed
+                                db.collection("news").get()
+                                    .addOnSuccessListener { ns ->
+                                        trySend(ns.toObjects(NewsArticle::class.java))
+                                    }
+                                    .addOnFailureListener { trySend(emptyList()) }
                             }
                         }
-                        is String -> v
-                        else -> ""
-                    }
-                    NewsArticle(
-                        id = doc.id,
-                        category = disease,
-                        source = source,
-                        timestamp = publishedAt,
-                        title = title,
-                        content = rawText.take(200),
-                        location = location,
-                        severity = severity
-                    )
-                }
-                // If the reports collection has data use it; otherwise fall back to seed
-                if (articles.isNotEmpty()) {
-                    trySend(articles)
-                } else {
-                    // Fallback: read legacy 'news' seed collection
-                    db.collection("news").get().addOnSuccessListener { fallback ->
-                        val fallbackArticles = fallback.toObjects(NewsArticle::class.java)
-                        trySend(fallbackArticles)
-                    }.addOnFailureListener {
-                        trySend(emptyList())
-                    }
                 }
             }
-        awaitClose { listener.remove() }
+
+        awaitClose {
+            primaryListener.remove()
+            fallbackListener?.remove()
+        }
     }
 
     // Real-time Flow for Outbreaks
@@ -340,13 +357,19 @@ class FirebaseRepository {
 
     // --- Friends & Social — Firestore-native (no backend dependency) ---
 
-    // Search users by name prefix directly in Firestore.
+    // Search users by name prefix OR exact UID match directly in Firestore.
     // Falls back to empty list on any error (e.g. missing index).
     suspend fun searchUsers(query: String): List<User> {
         if (query.isBlank()) return emptyList()
         val currentUid = FirebaseAuth.getInstance().currentUser?.uid ?: ""
         return try {
             val lower = query.lowercase()
+            // If query looks like a UID (long alphanumeric string), try exact UID match first
+            if (query.length >= 20) {
+                val uidDoc = db.collection("users").document(query).get().await()
+                val uidUser = uidDoc.toObject(User::class.java)
+                if (uidUser != null && uidUser.uid != currentUid) return listOf(uidUser)
+            }
             val snap = db.collection("users")
                 .orderBy("name")
                 .startAt(lower)
