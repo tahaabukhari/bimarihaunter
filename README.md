@@ -12,4 +12,4 @@ Quick start:
 
 Full docs, architecture, and assets live in `docs/app-doc/README.md`.
 
-That's it — short, sharp, and ready for contributors.
+
