@@ -122,4 +122,14 @@ dependencies {
 
     // ZXing — QR code generation (pure Java, no camera permission needed for generation only)
     implementation("com.google.zxing:core:3.5.3")
+
+    // CameraX — QR code scanning camera
+    val cameraxVersion = "1.3.4"
+    implementation("androidx.camera:camera-core:$cameraxVersion")
+    implementation("androidx.camera:camera-camera2:$cameraxVersion")
+    implementation("androidx.camera:camera-lifecycle:$cameraxVersion")
+    implementation("androidx.camera:camera-view:$cameraxVersion")
+
+    // ML Kit Barcode Scanning
+    implementation("com.google.mlkit:barcode-scanning:17.3.0")
 }
