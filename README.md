@@ -2,15 +2,15 @@
 > **Stay Informed. Stay Safe.**
 BimariHaunter is a real-time public health Android application built for Pakistan. It aggregates outbreak and disease reports from across the web, surfaces them on an interactive map, and delivers proximity-aware notifications so users are alerted the moment a health threat enters their area.
 <div style="display:flex;align-items:center;justify-content:center;gap:16px;flex-wrap:wrap;">
-  <img src="images/ghost-left.svg" alt="ghost left" width="96" height="96" />
+  <img src="docs/app-doc/images/ghost-left.svg" alt="ghost left" width="96" height="96" />
   <div style="text-align:center;max-width:720px;">
     <h1 style="margin:0;padding:0;">BimariHaunter</h1>
     <p style="margin:6px 0 0 0;font-weight:600;">Stay Informed. Stay Safe.</p>
   </div>
-  <img src="images/ghost-right.svg" alt="ghost right" width="96" height="96" />
+  <img src="docs/app-doc/images/ghost-right.svg" alt="ghost right" width="96" height="96" />
 </div>
 
-<p style="text-align:center;margin-top:8px;"><img src="images/ghost-bottom.svg" alt="ghost bottom" width="240" /></p>
+<p style="text-align:center;margin-top:8px;"><img src="docs/app-doc/images/ghost-bottom.svg" alt="ghost bottom" width="240" /></p>
 
 ---
 
