@@ -25,7 +25,6 @@ import com.bimarihaunter.ui.components.ChatBubble
 import com.bimarihaunter.ui.theme.*
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.Query
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -70,12 +69,11 @@ class UserDirectChatViewModel : ViewModel() {
         listenerRegistration = db.collection("direct_chats")
             .document(chatId)
             .collection("messages")
-            .orderBy("timestamp", Query.Direction.ASCENDING)
             .addSnapshotListener { snap, err ->
                 if (err != null) { Timber.e(err, "Direct chat listener error"); return@addSnapshotListener }
-                _messages.value = snap?.documents?.mapNotNull { doc ->
+                _messages.value = (snap?.documents?.mapNotNull { doc ->
                     doc.toObject(Message::class.java)?.copy(id = doc.id)
-                } ?: emptyList()
+                } ?: emptyList()).sortedBy { it.timestamp }
             }
     }
 

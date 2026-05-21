@@ -58,21 +58,83 @@ class AddFriendsViewModel : ViewModel() {
         viewModelScope.launch {
             _isLoading.value = true
             try {
-                val lower = query.lowercase()
-                // Search by displayName prefix (Firestore doesn't support full-text —
-                // this covers the most common case; a real app would use Algolia/Typesense)
-                val snap = db.collection("users")
-                    .orderBy("name")
-                    .startAt(lower)
-                    .endAt(lower + "\uf8ff")
-                    .limit(20)
-                    .get()
-                    .await()
+                val results = mutableListOf<User>()
+                val trimmed = query.trim()
 
-                val results = snap.documents.mapNotNull { doc ->
-                    doc.toObject(User::class.java)?.copy()
-                }.filter { it.uid != currentUid }
+                // Strategy 1: lowercase range query (NO orderBy, NO index needed)
+                val lower = trimmed.lowercase()
+                try {
+                    val snap = db.collection("users")
+                        .whereGreaterThanOrEqualTo("name", lower)
+                        .whereLessThanOrEqualTo("name", lower + "\uf8ff")
+                        .limit(20)
+                        .get()
+                        .await()
+                    for (doc in snap.documents) {
+                        val user = doc.toObject(User::class.java) ?: continue
+                        if (user.uid != currentUid && results.none { it.uid == user.uid })
+                            results.add(user)
+                    }
+                } catch (e: Exception) {
+                    Timber.w(e, "searchUsers: lowercase range failed")
+                }
 
+                // Strategy 2: title-case range (covers "Ali Khan" style names)
+                val titleCase = trimmed.replaceFirstChar { it.uppercase() }
+                try {
+                    val snap = db.collection("users")
+                        .whereGreaterThanOrEqualTo("name", titleCase)
+                        .whereLessThanOrEqualTo("name", titleCase + "\uf8ff")
+                        .limit(20)
+                        .get()
+                        .await()
+                    for (doc in snap.documents) {
+                        val user = doc.toObject(User::class.java) ?: continue
+                        if (user.uid != currentUid && results.none { it.uid == user.uid })
+                            results.add(user)
+                    }
+                } catch (e: Exception) {
+                    Timber.w(e, "searchUsers: title-case range failed")
+                }
+
+                // Strategy 3: email exact match
+                if (trimmed.contains("@")) {
+                    try {
+                        val snap = db.collection("users")
+                            .whereEqualTo("email", trimmed)
+                            .limit(5)
+                            .get()
+                            .await()
+                        for (doc in snap.documents) {
+                            val user = doc.toObject(User::class.java) ?: continue
+                            if (user.uid != currentUid && results.none { it.uid == user.uid })
+                                results.add(user)
+                        }
+                    } catch (e: Exception) {
+                        Timber.w(e, "searchUsers: email query failed")
+                    }
+                }
+
+                // Strategy 4: phone number exact match
+                if (trimmed.startsWith("+") || trimmed.all { it.isDigit() || it == '-' || it == ' ' }) {
+                    try {
+                        val snap = db.collection("users")
+                            .whereEqualTo("phoneNumber", trimmed)
+                            .limit(5)
+                            .get()
+                            .await()
+                        for (doc in snap.documents) {
+                            val user = doc.toObject(User::class.java) ?: continue
+                            if (user.uid != currentUid && results.none { it.uid == user.uid })
+                                results.add(user)
+                        }
+                    } catch (e: Exception) {
+                        Timber.w(e, "searchUsers: phone query failed")
+                    }
+                }
+
+                // Sort results client-side
+                results.sortBy { it.name.lowercase() }
                 _searchResults.value = results
             } catch (e: Exception) {
                 Timber.e(e, "User search failed")

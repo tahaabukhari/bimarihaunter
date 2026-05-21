@@ -33,6 +33,7 @@ abstract class BimarihaunterDatabase : RoomDatabase() {
                     "bimarihaunter_db"
                 )
                     .addMigrations(MIGRATION_1_2)
+                    .fallbackToDestructiveMigration()
                     .build()
                 INSTANCE = instance
                 instance

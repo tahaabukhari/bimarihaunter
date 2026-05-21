@@ -186,7 +186,14 @@ fun BimarihaunterApp() {
                         }
                     }
                     
+                    // CRITICAL FIX: Always sync feed immediately with defaults.
+                    // This ensures the feed loads even before location permission is granted.
+                    // Once location is available, we sync again with the real coordinates.
                     LaunchedEffect(Unit) {
+                        // Immediately sync with defaults so feed is never empty
+                        feedViewModel.syncFeed("Karachi", 24.8607, 67.0011)
+
+                        // Then try to get real location and re-sync
                         val finePermission = androidx.core.content.ContextCompat.checkSelfPermission(
                             context,
                             android.Manifest.permission.ACCESS_FINE_LOCATION
@@ -214,14 +221,10 @@ fun BimarihaunterApp() {
                                             // Use default city
                                         }
                                         feedViewModel.syncFeed(cityName, location.latitude, location.longitude)
-                                    } else {
-                                        feedViewModel.syncFeed("Karachi", 24.8607, 67.0011)
                                     }
-                                }.addOnFailureListener {
-                                    feedViewModel.syncFeed("Karachi", 24.8607, 67.0011)
                                 }
                             } catch (e: SecurityException) {
-                                feedViewModel.syncFeed("Karachi", 24.8607, 67.0011)
+                                // Already synced with defaults above
                             }
                         } else {
                             permissionLauncher.launch(

@@ -12,19 +12,20 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import timber.log.Timber
 
 // ═══════════════════════════════════════════════════════════════════════════
-// FeedRepository — BULLETPROOF VERSION
+// FeedRepository — BULLETPROOF VERSION v3
 //
-// KEY CHANGES vs previous version:
-// 1. ALL orderBy() calls removed — they require Firestore indexes that may
-//    not exist, causing silent exceptions and empty feeds.
-// 2. fetchRootFeed() now reads /reports (where the scraper writes) instead
-//    of /feed (which never existed).
-// 3. All sorting is done client-side after fetching.
-// 4. Every Firestore call is individually try/caught so one failure does not
-//    block the others.
+// CRITICAL FIXES:
+// 1. ALL orderBy() calls removed — they require Firestore composite indexes.
+// 2. Reads /reports FIRST (where the backend scraper writes).
+// 3. triggerJob() has a 5-second timeout so it never blocks the sync.
+// 4. syncFeed() does NOT require authentication — if user is null, it still
+//    fetches from /reports (the global collection).
+// 5. Every Firestore call is individually try/caught.
+// 6. Client-side sorting after fetch.
 // ═══════════════════════════════════════════════════════════════════════════
 class FeedRepository(private val database: BimarihaunterDatabase) {
 
@@ -43,50 +44,51 @@ class FeedRepository(private val database: BimarihaunterDatabase) {
 
     /**
      * Syncs Firestore → Room.
-     * Priority: users/{uid}/feed → /reports → /news seeds
+     * Priority: /reports (global) → users/{uid}/feed → /news seeds → mock
      * Never throws — all errors are caught and logged.
+     * Does NOT require authentication — fetches /reports even if user is null.
      */
     suspend fun syncFeed(city: String, latitude: Double, longitude: Double) {
         val uid = auth.currentUser?.uid
-        if (uid.isNullOrBlank()) {
-            Timber.w("Feed sync skipped — user not authenticated.")
-            return
-        }
 
-        // Trigger backend scraper (non-fatal if it fails)
+        // Trigger backend scraper with a short timeout — truly non-blocking
         try {
-            RetrofitClient.apiService.triggerJob()
+            withTimeoutOrNull(5000L) {
+                RetrofitClient.apiService.triggerJob()
+            }
             Timber.d("Backend scraper triggered.")
         } catch (e: Exception) {
             Timber.w(e, "Backend trigger failed — continuing sync.")
         }
 
-        // Update user location in Firestore (non-fatal)
-        try {
-            updateUserLocation(uid, city, latitude, longitude)
-        } catch (e: Exception) {
-            Timber.w(e, "updateUserLocation failed — continuing sync.")
+        // Update user location in Firestore (non-fatal, skip if not logged in)
+        if (!uid.isNullOrBlank()) {
+            try {
+                updateUserLocation(uid, city, latitude, longitude)
+            } catch (e: Exception) {
+                Timber.w(e, "updateUserLocation failed — continuing sync.")
+            }
         }
 
         var entities: List<OutbreakReportEntity> = emptyList()
 
-        // 1. Try users/{uid}/feed — NO orderBy
-        if (entities.isEmpty()) {
-            try {
-                entities = fetchUserFeed(uid)
-                Timber.d("fetchUserFeed returned ${entities.size} items.")
-            } catch (e: Exception) {
-                Timber.w(e, "fetchUserFeed failed.")
-            }
-        }
-
-        // 2. Try /reports — NO orderBy (this is where the scraper writes)
+        // 1. Try /reports FIRST — this is where the scraper writes (global, no auth needed)
         if (entities.isEmpty()) {
             try {
                 entities = fetchReports()
                 Timber.d("fetchReports returned ${entities.size} items.")
             } catch (e: Exception) {
                 Timber.w(e, "fetchReports failed.")
+            }
+        }
+
+        // 2. Try users/{uid}/feed — personal feed
+        if (entities.isEmpty() && !uid.isNullOrBlank()) {
+            try {
+                entities = fetchUserFeed(uid)
+                Timber.d("fetchUserFeed returned ${entities.size} items.")
+            } catch (e: Exception) {
+                Timber.w(e, "fetchUserFeed failed.")
             }
         }
 
@@ -100,14 +102,13 @@ class FeedRepository(private val database: BimarihaunterDatabase) {
             }
         }
 
-        // 4. If still empty, seed two mock items so the screen is never blank
-        if (entities.isEmpty()) {
+        // 4. If still empty and user is logged in, seed mock items
+        if (entities.isEmpty() && !uid.isNullOrBlank()) {
             Timber.d("All Firestore sources empty — seeding mock feed for $uid.")
             try {
                 val feedRef = firestore.collection("users").document(uid).collection("feed")
                 feedRef.add(mockReport(city, latitude, longitude, "Dengue", "CRITICAL")).await()
                 feedRef.add(mockReport(city, latitude + 0.01, longitude + 0.01, "General", "INFO")).await()
-                // Re-fetch without orderBy
                 val snap = feedRef.limit(10).get().await()
                 entities = snap.documents.mapNotNull { documentToEntity(it) }
             } catch (e: Exception) {
