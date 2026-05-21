@@ -1,8 +1,16 @@
 # BimariHaunter
-
 > **Stay Informed. Stay Safe.**
+BimariHaunter is a real-time public health Android application built for Pakistan. It aggregates outbreak and disease reports from across the web, surfaces them on an interactive map, and delivers proximity-aware notifications so users are alerted the moment a health threat enters their area.
+<div style="display:flex;align-items:center;justify-content:center;gap:16px;flex-wrap:wrap;">
+  <img src="images/ghost-left.svg" alt="ghost left" width="96" height="96" />
+  <div style="text-align:center;max-width:720px;">
+    <h1 style="margin:0;padding:0;">BimariHaunter</h1>
+    <p style="margin:6px 0 0 0;font-weight:600;">Stay Informed. Stay Safe.</p>
+  </div>
+  <img src="images/ghost-right.svg" alt="ghost right" width="96" height="96" />
+</div>
 
-BimariHaunter is a real-time public health surveillance Android application built for Pakistan. It aggregates outbreak and disease reports from across the web, surfaces them on an interactive map, and delivers proximity-aware notifications so users are alerted the moment a health threat enters their area.
+<p style="text-align:center;margin-top:8px;"><img src="images/ghost-bottom.svg" alt="ghost bottom" width="240" /></p>
 
 ---
 
@@ -280,3 +288,29 @@ The Android app authenticates all backend requests through `AuthInterceptor`, wh
 | `location_alerts` | Location Alerts | City-change detection |
 
 ---
+
+## Ghost Mascot System
+
+BimariHaunter features a ghost mascot character that appears throughout the app as contextual stickers. The ghost communicates app state without relying on text alone.
+
+| Asset | Emotion | Where it appears |
+|-------|---------|-----------------|
+| `ghost_happy` | Happy | App icon, splash screen |
+| `ghost_waving` | Welcoming | AddFriends empty state |
+| `ghost_thinking` | Thinking | Insights loading state |
+| `ghost_sleep` | Sleeping | Feed loading state |
+| `ghost_sad` | Sad | Feed empty/no-results state |
+| `ghost_alert` | Alert | 15km proximity banner on map |
+| `ghost_hero` | Heroic | Onboarding and auth screens |
+
+---
+
+## Contributing
+
+This project was built for a hackathon. If you want to extend it, the most impactful areas are:
+
+- **Expanding the scraper** to cover more RSS sources and languages (Urdu support is a priority).
+- **Improving the AI classifier** — the current `rss-keyword-classifier-v2` is keyword-based; a fine-tuned transformer would significantly improve precision.
+- **Adding heatmap layers** to the map for visualising outbreak density.
+- **Implementing the Alerts tab** with user-configurable disease and location filters.
+- **Internationalisation** — the UI is English-only; Urdu RTL support would dramatically expand the user base.
