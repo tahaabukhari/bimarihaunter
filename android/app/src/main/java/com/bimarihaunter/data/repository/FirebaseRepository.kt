@@ -347,39 +347,87 @@ class FirebaseRepository {
     // ═══════════════════════════════════════════════════════════════════════════
     // FRIENDS — FIRESTORE NATIVE (NO BACKEND API NEEDED)
     // ═══════════════════════════════════════════════════════════════════════════
+
+    // ─── searchUsers — FIXED: NO INDEX REQUIRED ──────────────────────────────
+    // Previous version used .orderBy("name") which requires a Firestore
+    // composite index. Without the index, Firestore throws an exception that
+    // is caught silently, returning zero results every time.
+    //
+    // Fix: Use whereGreaterThanOrEqualTo / whereLessThanOrEqualTo range query
+    // on the "name" field. Single-field range queries work without any
+    // composite index. Sorting is done client-side after fetching.
+    // ─────────────────────────────────────────────────────────────────────────
     suspend fun searchUsers(query: String): List<User> {
         val currentUid = FirebaseAuth.getInstance().currentUser?.uid ?: return emptyList()
+        val trimmed = query.trim()
+        if (trimmed.isBlank()) return emptyList()
         val results = mutableListOf<User>()
-        try {
-            // 1. Try exact UID match first
-            if (query.length >= 20) {
-                val doc = db.collection("users").document(query).get().await()
+
+        // 1. Exact UID match — if the query looks like a Firebase UID (≥20 chars,
+        //    alphanumeric) try a direct document lookup first.
+        if (trimmed.length >= 20 && trimmed.all { it.isLetterOrDigit() }) {
+            try {
+                val doc = db.collection("users").document(trimmed).get().await()
                 if (doc.exists()) {
                     val user = doc.toObject(User::class.java)
                     if (user != null && user.uid != currentUid) {
-                        results.add(user)
-                        return results
+                        // Return immediately — UID is unambiguous
+                        return listOf(user)
                     }
                 }
+            } catch (e: Exception) {
+                Timber.w(e, "searchUsers: UID lookup failed, continuing with name search")
             }
-            // 2. Name prefix search (case-insensitive via lowercase comparison)
-            val lower = query.lowercase()
-            val snapshot = db.collection("users")
-                .orderBy("name")
-                .startAt(lower)
-                .endAt(lower + "\uf8ff")
+        }
+
+        // 2. Name prefix range query — NO index required.
+        //    Firestore range queries on a single field work without a composite
+        //    index. We query both lowercase and title-case to handle mixed-case
+        //    names stored in Firestore.
+        val lower = trimmed.lowercase()
+        val lowerUpper = lower + "\uF8FF"
+
+        // 2a. Lowercase range (covers names stored in lowercase)
+        try {
+            val snap = db.collection("users")
+                .whereGreaterThanOrEqualTo("name", lower)
+                .whereLessThanOrEqualTo("name", lowerUpper)
                 .limit(20)
                 .get()
                 .await()
-            for (doc in snapshot.documents) {
+            for (doc in snap.documents) {
                 val user = doc.toObject(User::class.java) ?: continue
                 if (user.uid == currentUid) continue
                 if (!results.any { it.uid == user.uid }) results.add(user)
             }
-            // 3. Also try email exact match
-            if (query.contains("@")) {
+        } catch (e: Exception) {
+            Timber.w(e, "searchUsers: lowercase range query failed")
+        }
+
+        // 2b. Title-case range (covers names stored as "Ali Khan")
+        val titleCase = trimmed.replaceFirstChar { it.uppercase() }
+        val titleUpper = titleCase + "\uF8FF"
+        try {
+            val snap = db.collection("users")
+                .whereGreaterThanOrEqualTo("name", titleCase)
+                .whereLessThanOrEqualTo("name", titleUpper)
+                .limit(20)
+                .get()
+                .await()
+            for (doc in snap.documents) {
+                val user = doc.toObject(User::class.java) ?: continue
+                if (user.uid == currentUid) continue
+                if (!results.any { it.uid == user.uid }) results.add(user)
+            }
+        } catch (e: Exception) {
+            Timber.w(e, "searchUsers: title-case range query failed")
+        }
+
+        // 3. Email exact match — only if query contains '@'
+        if (trimmed.contains("@")) {
+            try {
                 val emailSnap = db.collection("users")
-                    .whereEqualTo("email", query.trim())
+                    .whereEqualTo("email", trimmed)
                     .limit(5)
                     .get()
                     .await()
@@ -388,10 +436,31 @@ class FirebaseRepository {
                     if (user.uid == currentUid) continue
                     if (!results.any { it.uid == user.uid }) results.add(user)
                 }
+            } catch (e: Exception) {
+                Timber.w(e, "searchUsers: email query failed")
             }
-        } catch (e: Exception) {
-            Timber.e(e, "searchUsers failed")
         }
+
+        // 4. Phone number exact match
+        if (trimmed.startsWith("+") || trimmed.all { it.isDigit() || it == '-' || it == ' ' }) {
+            try {
+                val phoneSnap = db.collection("users")
+                    .whereEqualTo("phoneNumber", trimmed)
+                    .limit(5)
+                    .get()
+                    .await()
+                for (doc in phoneSnap.documents) {
+                    val user = doc.toObject(User::class.java) ?: continue
+                    if (user.uid == currentUid) continue
+                    if (!results.any { it.uid == user.uid }) results.add(user)
+                }
+            } catch (e: Exception) {
+                Timber.w(e, "searchUsers: phone query failed")
+            }
+        }
+
+        // Sort results client-side by name for consistent ordering
+        results.sortBy { it.name?.lowercase() ?: "" }
         return results
     }
 
