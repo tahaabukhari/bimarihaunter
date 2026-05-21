@@ -33,5 +33,5 @@ pytest -q
 - Deployment: backend builds via Docker and deploys to Cloud Run; migrations use Alembic for the DB where applicable.
 - Notes: assets and mascot art live in `docs/app-doc/images/` and `android/ghosts/`.
 
-Built 100% over antigravity with patience and perseverance. 👻
+Built 100% over antigravity with patience and perseverance. 👻 by team bitscare
 
