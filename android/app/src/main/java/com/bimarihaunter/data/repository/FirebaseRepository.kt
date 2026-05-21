@@ -1,49 +1,50 @@
 package com.bimarihaunter.data.repository
 
 import com.bimarihaunter.data.model.*
+import com.bimarihaunter.network.RetrofitClient
+import com.bimarihaunter.network.UserRegisterRequest
 import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.GeoPoint
 import com.google.firebase.firestore.Query
+import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
-import com.bimarihaunter.network.RetrofitClient
 import kotlinx.coroutines.tasks.await
 import timber.log.Timber
-import com.bimarihaunter.network.UserRegisterRequest
 
 class FirebaseRepository {
     private val db = FirebaseFirestore.getInstance()
 
-    init {
-        seedDatabaseIfEmpty()
-    }
-
-    // Real-time Flow for News.
-    // Priority chain:
-    //   1. users/{uid}/feed  — personalised, fan-out by backend scraper
-    //   2. /reports          — all scraped articles (fallback live listener)
-    //   3. /news             — legacy seed articles (one-shot fallback)
+    // ═══════════════════════════════════════════════════════════════════════════
+    // NEWS FEED — BULLETPROOF: NO INDEX REQUIRED
+    // Reads /reports directly. No orderBy (avoids index requirement).
+    // Sorts client-side. Falls back to /news seeds if /reports is empty.
+    // ═══════════════════════════════════════════════════════════════════════════
     fun getNews(): Flow<List<NewsArticle>> = callbackFlow {
         val uid = FirebaseAuth.getInstance().currentUser?.uid
 
-        fun mapDoc(doc: com.google.firebase.firestore.DocumentSnapshot): NewsArticle? {
+        fun mapDoc(doc: DocumentSnapshot): NewsArticle? {
             val data = doc.data ?: return null
             val title = data["title"] as? String ?: return null
+            if (title.isBlank()) return null
             val source = data["source"] as? String ?: "BimariHaunter"
-            val rawText = data["raw_text"] as? String ?: ""
+            val rawText = data["raw_text"] as? String ?: data["content"] as? String ?: ""
             val ai = data["ai_analysis"] as? Map<*, *>
-            val disease = (ai?.get("disease") as? String ?: "Health").replaceFirstChar { it.uppercase() }
-            val severityRaw = (ai?.get("severity") as? String ?: "medium").lowercase()
+            val disease = (ai?.get("disease") as? String ?: data["category"] as? String ?: "Health")
+                .replaceFirstChar { it.uppercase() }
+            val severityRaw = (ai?.get("severity") as? String ?: data["severity"] as? String ?: "medium").lowercase()
             val severity = when (severityRaw) {
                 "critical", "high" -> "CRITICAL"
                 "medium", "moderate" -> "WARNING"
                 else -> "INFO"
             }
             val location = (ai?.get("locations") as? List<*>)
-                ?.mapNotNull { it as? String }?.firstOrNull() ?: "Pakistan"
+                ?.mapNotNull { it as? String }?.firstOrNull()
+                ?: data["location"] as? String
+                ?: "Pakistan"
             val publishedAt = when (val v = data["published_at"]) {
                 is Timestamp -> {
                     val diff = System.currentTimeMillis() - v.toDate().time
@@ -54,7 +55,12 @@ class FirebaseRepository {
                     }
                 }
                 is String -> v
-                else -> ""
+                else -> data["timestamp"] as? String ?: ""
+            }
+            // For sorting: extract raw millis
+            val sortKey = when (val v = data["published_at"]) {
+                is Timestamp -> v.toDate().time
+                else -> 0L
             }
             return NewsArticle(
                 id = doc.id, category = disease, source = source,
@@ -63,61 +69,62 @@ class FirebaseRepository {
             )
         }
 
+        // Helper to get sort key from a document
+        fun getSortKey(doc: DocumentSnapshot): Long {
+            val data = doc.data ?: return 0L
+            return when (val v = data["published_at"]) {
+                is Timestamp -> v.toDate().time
+                else -> 0L
+            }
+        }
+
         var fallbackListener: com.google.firebase.firestore.ListenerRegistration? = null
 
-        // ── Primary: users/{uid}/feed live listener ──────────────────────────────
-        val primaryRef = if (!uid.isNullOrBlank())
-            db.collection("users").document(uid).collection("feed")
-        else
-            db.collection("reports")
-
-        val primaryListener = primaryRef
-            .orderBy("published_at", Query.Direction.DESCENDING)
-            .limit(50)
+        // ── Strategy: Try /reports with NO orderBy (no index needed) ──
+        // Use .limit(100) to cap the read, then sort client-side.
+        val reportsListener = db.collection("reports")
+            .limit(100)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
-                    Timber.e(error, "getNews primary listener failed")
+                    Timber.e(error, "getNews /reports listener failed: ${error.message}")
+                    // Even if /reports fails, try /news seeds
+                    db.collection("news").get()
+                        .addOnSuccessListener { ns ->
+                            val seeds = ns.toObjects(NewsArticle::class.java)
+                            trySend(seeds)
+                        }
+                        .addOnFailureListener { trySend(emptyList()) }
                     return@addSnapshotListener
                 }
-                val articles = snapshot?.documents?.mapNotNull { mapDoc(it) } ?: emptyList()
+
+                val docs = snapshot?.documents ?: emptyList()
+                // Sort client-side by published_at descending
+                val sorted = docs.sortedByDescending { getSortKey(it) }
+                val articles = sorted.mapNotNull { mapDoc(it) }.take(50)
+
                 if (articles.isNotEmpty()) {
-                    // Cancel fallback if primary now has data
-                    fallbackListener?.remove()
-                    fallbackListener = null
                     trySend(articles)
-                } else if (!uid.isNullOrBlank() && fallbackListener == null) {
-                    // User feed empty — attach live listener on root /reports
-                    fallbackListener = db.collection("reports")
-                        .orderBy("published_at", Query.Direction.DESCENDING)
-                        .limit(50)
-                        .addSnapshotListener { fbSnap, fbErr ->
-                            if (fbErr != null) {
-                                Timber.e(fbErr, "getNews reports fallback failed")
-                                return@addSnapshotListener
-                            }
-                            val fbArticles = fbSnap?.documents
-                                ?.mapNotNull { mapDoc(it) } ?: emptyList()
-                            if (fbArticles.isNotEmpty()) {
-                                trySend(fbArticles)
-                            } else {
-                                // Last resort: legacy /news seed
-                                db.collection("news").get()
-                                    .addOnSuccessListener { ns ->
-                                        trySend(ns.toObjects(NewsArticle::class.java))
-                                    }
-                                    .addOnFailureListener { trySend(emptyList()) }
-                            }
+                } else {
+                    // /reports is empty — fall back to /news seed collection
+                    Timber.d("getNews: /reports empty, falling back to /news seeds")
+                    db.collection("news").get()
+                        .addOnSuccessListener { ns ->
+                            val seeds = ns.toObjects(NewsArticle::class.java)
+                            trySend(seeds.ifEmpty { emptyList() })
                         }
+                        .addOnFailureListener { trySend(emptyList()) }
                 }
             }
 
         awaitClose {
-            primaryListener.remove()
+            reportsListener.remove()
             fallbackListener?.remove()
         }
     }
 
-    // Real-time Flow for Outbreaks
+    // ═══════════════════════════════════════════════════════════════════════════
+    // OUTBREAKS
+    // ═══════════════════════════════════════════════════════════════════════════
     fun getOutbreaks(): Flow<List<OutbreakPoint>> = callbackFlow {
         val listener = db.collection("outbreaks")
             .addSnapshotListener { snapshot, error ->
@@ -132,7 +139,9 @@ class FirebaseRepository {
         awaitClose { listener.remove() }
     }
 
-    // Real-time Flow for Alerts
+    // ═══════════════════════════════════════════════════════════════════════════
+    // ALERTS
+    // ═══════════════════════════════════════════════════════════════════════════
     fun getAlerts(): Flow<List<AlertData>> = callbackFlow {
         val listener = db.collection("alerts")
             .addSnapshotListener { snapshot, error ->
@@ -147,7 +156,9 @@ class FirebaseRepository {
         awaitClose { listener.remove() }
     }
 
-    // Real-time Flow for ChatGroups
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CHAT GROUPS — NO INDEX REQUIRED
+    // ═══════════════════════════════════════════════════════════════════════════
     fun getChatGroups(): Flow<List<ChatGroup>> = callbackFlow {
         val listener = db.collection("chats")
             .addSnapshotListener { snapshot, error ->
@@ -166,14 +177,14 @@ class FirebaseRepository {
     fun getMessages(chatGroupId: String): Flow<List<Message>> = callbackFlow {
         val listener = db.collection("chats").document(chatGroupId)
             .collection("messages")
-            .orderBy("timestamp", Query.Direction.ASCENDING)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
                     Timber.e(error, "getMessages failed — emitting empty list")
                     trySend(emptyList())
                     return@addSnapshotListener
                 }
-                val messages = snapshot?.toObjects(Message::class.java) ?: emptyList()
+                val messages = (snapshot?.toObjects(Message::class.java) ?: emptyList())
+                    .sortedBy { it.timestamp }
                 trySend(messages)
             }
         awaitClose { listener.remove() }
@@ -184,7 +195,6 @@ class FirebaseRepository {
         val messageRef = db.collection("chats").document(chatGroupId)
             .collection("messages").document()
         val finalMessage = message.copy(id = messageRef.id)
-        
         db.runTransaction { transaction ->
             transaction.set(messageRef, finalMessage)
             transaction.update(
@@ -194,12 +204,14 @@ class FirebaseRepository {
                     "lastMessageTime" to "Just now"
                 )
             )
-        }.addOnFailureListener {
-            // Log or handle error if transaction fails
+        }.addOnFailureListener { e ->
+            Timber.e(e, "sendMessage transaction failed")
         }
     }
 
-    // User profiles
+    // ═══════════════════════════════════════════════════════════════════════════
+    // USER PROFILES
+    // ═══════════════════════════════════════════════════════════════════════════
     suspend fun saveUserProfile(user: User) {
         val userMap = hashMapOf(
             "uid" to user.uid,
@@ -216,7 +228,6 @@ class FirebaseRepository {
         } catch (e: Exception) {
             Timber.e(e, "Failed to write user profile to Firestore: ${user.uid}")
         }
-
         try {
             val request = UserRegisterRequest(
                 uid = user.uid,
@@ -242,22 +253,25 @@ class FirebaseRepository {
             }
     }
 
-    // --- Direct Chats & Messaging Extension ---
-
-    // Real-time Flow for Direct Chats.
-    // NOTE: This query requires a Firestore composite index on (participants ARRAY_CONTAINS).
-    // If the index is missing Firestore emits FAILED_PRECONDITION — we catch it and emit
-    // an empty list so the screen never crashes. Create the index from the Firestore console.
+    // ═══════════════════════════════════════════════════════════════════════════
+    // DIRECT CHATS — NO INDEX REQUIRED (reads all, filters client-side)
+    // ═══════════════════════════════════════════════════════════════════════════
     fun getDirectChats(currentUid: String): Flow<List<ChatGroup>> = callbackFlow {
+        if (currentUid.isBlank()) {
+            trySend(emptyList())
+            awaitClose { }
+            return@callbackFlow
+        }
         val listener = db.collection("direct_chats")
-            .whereArrayContains("participants", currentUid)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
-                    Timber.e(error, "getDirectChats failed (missing index?) — emitting empty list")
+                    Timber.e(error, "getDirectChats failed — emitting empty list")
                     trySend(emptyList())
                     return@addSnapshotListener
                 }
-                val chats = snapshot?.toObjects(ChatGroup::class.java) ?: emptyList()
+                // Filter client-side to avoid needing array-contains index
+                val chats = (snapshot?.toObjects(ChatGroup::class.java) ?: emptyList())
+                    .filter { it.participants.contains(currentUid) }
                 trySend(chats)
             }
         awaitClose { listener.remove() }
@@ -267,20 +281,20 @@ class FirebaseRepository {
     fun getDirectMessages(chatId: String): Flow<List<Message>> = callbackFlow {
         val listener = db.collection("direct_chats").document(chatId)
             .collection("messages")
-            .orderBy("timestamp", Query.Direction.ASCENDING)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
                     Timber.e(error, "getDirectMessages failed — emitting empty list")
                     trySend(emptyList())
                     return@addSnapshotListener
                 }
-                val messages = snapshot?.toObjects(Message::class.java) ?: emptyList()
+                val messages = (snapshot?.toObjects(Message::class.java) ?: emptyList())
+                    .sortedBy { it.timestamp }
                 trySend(messages)
             }
         awaitClose { listener.remove() }
     }
 
-    // Send a Direct Message (automatically creates the chat parent document if it doesn't exist)
+    // Send a Direct Message
     fun sendDirectMessage(
         chatId: String,
         senderId: String,
@@ -292,9 +306,7 @@ class FirebaseRepository {
         val chatRef = db.collection("direct_chats").document(chatId)
         val messageRef = chatRef.collection("messages").document()
         val finalMessage = message.copy(id = messageRef.id)
-        
         db.runTransaction { transaction ->
-            // Create or update chat document
             val chatData = mapOf(
                 "id" to chatId,
                 "category" to "Direct",
@@ -304,98 +316,98 @@ class FirebaseRepository {
                 "names" to mapOf(senderId to senderName, recipientId to recipientName),
                 "severity" to "INFO"
             )
-            transaction.set(chatRef, chatData, com.google.firebase.firestore.SetOptions.merge())
+            transaction.set(chatRef, chatData, SetOptions.merge())
             transaction.set(messageRef, finalMessage)
-        }.addOnFailureListener {
-            // Handle error
+        }.addOnFailureListener { e ->
+            Timber.e(e, "sendDirectMessage transaction failed")
         }
     }
 
-    // Edit a Direct Message
+    // Edit / Delete messages
+    fun editGroupMessage(chatId: String, messageId: String, newText: String) {
+        db.collection("chats").document(chatId).collection("messages").document(messageId)
+            .update(mapOf("text" to newText, "edited" to true))
+    }
+
+    fun deleteGroupMessage(chatId: String, messageId: String) {
+        db.collection("chats").document(chatId).collection("messages").document(messageId)
+            .update(mapOf("text" to "[Message deleted]", "deleted" to true))
+    }
+
     fun editDirectMessage(chatId: String, messageId: String, newText: String) {
-        val messageRef = db.collection("direct_chats").document(chatId)
-            .collection("messages").document(messageId)
-        messageRef.update(mapOf("text" to newText, "edited" to true))
+        db.collection("direct_chats").document(chatId).collection("messages").document(messageId)
+            .update(mapOf("text" to newText, "edited" to true))
     }
 
-    // Delete (soft-delete) a Direct Message
     fun deleteDirectMessage(chatId: String, messageId: String) {
-        val messageRef = db.collection("direct_chats").document(chatId)
-            .collection("messages").document(messageId)
-        messageRef.update(mapOf(
-            "text" to "[Message deleted]",
-            "deleted" to true,
-            "sharedPostId" to null,
-            "sharedPostTitle" to null,
-            "sharedPostDisease" to null,
-            "sharedPostSeverity" to null,
-            "sharedPostUrl" to null
-        ))
+        db.collection("direct_chats").document(chatId).collection("messages").document(messageId)
+            .update(mapOf("text" to "[Message deleted]", "deleted" to true))
     }
 
-    // Edit a Group Message
-    fun editGroupMessage(chatGroupId: String, messageId: String, newText: String) {
-        val messageRef = db.collection("chats").document(chatGroupId)
-            .collection("messages").document(messageId)
-        messageRef.update(mapOf("text" to newText, "edited" to true))
-    }
-
-    // Delete (soft-delete) a Group Message
-    fun deleteGroupMessage(chatGroupId: String, messageId: String) {
-        val messageRef = db.collection("chats").document(chatGroupId)
-            .collection("messages").document(messageId)
-        messageRef.update(mapOf(
-            "text" to "[Message deleted]",
-            "deleted" to true,
-            "sharedPostId" to null,
-            "sharedPostTitle" to null,
-            "sharedPostDisease" to null,
-            "sharedPostSeverity" to null,
-            "sharedPostUrl" to null
-        ))
-    }
-
-    // --- Friends & Social — Firestore-native (no backend dependency) ---
-
-    // Search users by name prefix OR exact UID match directly in Firestore.
-    // Falls back to empty list on any error (e.g. missing index).
+    // ═══════════════════════════════════════════════════════════════════════════
+    // FRIENDS — FIRESTORE NATIVE (NO BACKEND API NEEDED)
+    // ═══════════════════════════════════════════════════════════════════════════
     suspend fun searchUsers(query: String): List<User> {
-        if (query.isBlank()) return emptyList()
-        val currentUid = FirebaseAuth.getInstance().currentUser?.uid ?: ""
-        return try {
-            val lower = query.lowercase()
-            // If query looks like a UID (long alphanumeric string), try exact UID match first
+        val currentUid = FirebaseAuth.getInstance().currentUser?.uid ?: return emptyList()
+        val results = mutableListOf<User>()
+        try {
+            // 1. Try exact UID match first
             if (query.length >= 20) {
-                val uidDoc = db.collection("users").document(query).get().await()
-                val uidUser = uidDoc.toObject(User::class.java)
-                if (uidUser != null && uidUser.uid != currentUid) return listOf(uidUser)
+                val doc = db.collection("users").document(query).get().await()
+                if (doc.exists()) {
+                    val user = doc.toObject(User::class.java)
+                    if (user != null && user.uid != currentUid) {
+                        results.add(user)
+                        return results
+                    }
+                }
             }
-            val snap = db.collection("users")
+            // 2. Name prefix search (case-insensitive via lowercase comparison)
+            val lower = query.lowercase()
+            val snapshot = db.collection("users")
                 .orderBy("name")
                 .startAt(lower)
-                .endAt(lower + "\uF8FF")
+                .endAt(lower + "\uf8ff")
                 .limit(20)
-                .get().await()
-            snap.documents
-                .mapNotNull { it.toObject(User::class.java) }
-                .filter { it.uid != currentUid }
+                .get()
+                .await()
+            for (doc in snapshot.documents) {
+                val user = doc.toObject(User::class.java) ?: continue
+                if (user.uid == currentUid) continue
+                if (!results.any { it.uid == user.uid }) results.add(user)
+            }
+            // 3. Also try email exact match
+            if (query.contains("@")) {
+                val emailSnap = db.collection("users")
+                    .whereEqualTo("email", query.trim())
+                    .limit(5)
+                    .get()
+                    .await()
+                for (doc in emailSnap.documents) {
+                    val user = doc.toObject(User::class.java) ?: continue
+                    if (user.uid == currentUid) continue
+                    if (!results.any { it.uid == user.uid }) results.add(user)
+                }
+            }
         } catch (e: Exception) {
             Timber.e(e, "searchUsers failed")
-            emptyList()
         }
+        return results
     }
 
-    // Write a bi-directional friend link directly in Firestore.
     suspend fun addFriend(friendId: String): Boolean {
         val currentUid = FirebaseAuth.getInstance().currentUser?.uid ?: return false
         return try {
-            val now = System.currentTimeMillis()
-            db.collection("users").document(currentUid)
-                .collection("friends").document(friendId)
-                .set(mapOf("since" to now)).await()
-            db.collection("users").document(friendId)
-                .collection("friends").document(currentUid)
-                .set(mapOf("since" to now)).await()
+            val batch = db.batch()
+            batch.set(
+                db.collection("users").document(currentUid).collection("friends").document(friendId),
+                mapOf("addedAt" to Timestamp.now())
+            )
+            batch.set(
+                db.collection("users").document(friendId).collection("friends").document(currentUid),
+                mapOf("addedAt" to Timestamp.now())
+            )
+            batch.commit().await()
             true
         } catch (e: Exception) {
             Timber.e(e, "addFriend failed")
@@ -403,16 +415,13 @@ class FirebaseRepository {
         }
     }
 
-    // Remove the bi-directional friend link from Firestore.
     suspend fun removeFriend(friendId: String): Boolean {
         val currentUid = FirebaseAuth.getInstance().currentUser?.uid ?: return false
         return try {
-            db.collection("users").document(currentUid)
-                .collection("friends").document(friendId)
-                .delete().await()
-            db.collection("users").document(friendId)
-                .collection("friends").document(currentUid)
-                .delete().await()
+            val batch = db.batch()
+            batch.delete(db.collection("users").document(currentUid).collection("friends").document(friendId))
+            batch.delete(db.collection("users").document(friendId).collection("friends").document(currentUid))
+            batch.commit().await()
             true
         } catch (e: Exception) {
             Timber.e(e, "removeFriend failed")
@@ -420,20 +429,18 @@ class FirebaseRepository {
         }
     }
 
-    // Load friends list from Firestore subcollection, returning full User profiles.
     suspend fun getFriends(): List<User> {
         val currentUid = FirebaseAuth.getInstance().currentUser?.uid ?: return emptyList()
         return try {
-            val snap = db.collection("users").document(currentUid)
+            val friendDocs = db.collection("users").document(currentUid)
                 .collection("friends").get().await()
-            val friendUids = snap.documents.map { it.id }
-            if (friendUids.isEmpty()) return emptyList()
+            val friendIds = friendDocs.documents.map { it.id }
+            if (friendIds.isEmpty()) return emptyList()
+            // Batch fetch friend profiles (max 30 per whereIn)
             val users = mutableListOf<User>()
-            friendUids.chunked(10).forEach { chunk ->
-                val usersSnap = db.collection("users")
-                    .whereIn("uid", chunk)
-                    .get().await()
-                users += usersSnap.documents.mapNotNull { it.toObject(User::class.java) }
+            friendIds.chunked(30).forEach { chunk ->
+                val snap = db.collection("users").whereIn("uid", chunk).get().await()
+                users.addAll(snap.toObjects(User::class.java))
             }
             users
         } catch (e: Exception) {
@@ -442,46 +449,64 @@ class FirebaseRepository {
         }
     }
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // BLOCKING
+    // ═══════════════════════════════════════════════════════════════════════════
     suspend fun blockUser(blockedId: String): Boolean {
+        val currentUid = FirebaseAuth.getInstance().currentUser?.uid ?: return false
         return try {
-            RetrofitClient.apiService.blockUser(blockedId).status == "success"
+            db.collection("users").document(currentUid).collection("blocked").document(blockedId)
+                .set(mapOf("blockedAt" to Timestamp.now())).await()
+            // Also remove from friends
+            removeFriend(blockedId)
+            true
         } catch (e: Exception) {
+            Timber.e(e, "blockUser failed")
             false
         }
     }
 
     suspend fun unblockUser(blockedId: String): Boolean {
+        val currentUid = FirebaseAuth.getInstance().currentUser?.uid ?: return false
         return try {
-            RetrofitClient.apiService.unblockUser(blockedId).status == "success"
+            db.collection("users").document(currentUid).collection("blocked").document(blockedId)
+                .delete().await()
+            true
         } catch (e: Exception) {
+            Timber.e(e, "unblockUser failed")
             false
         }
     }
 
     suspend fun getBlockedUsers(): List<String> {
+        val currentUid = FirebaseAuth.getInstance().currentUser?.uid ?: return emptyList()
         return try {
-            RetrofitClient.apiService.getBlockedUsers().blocked
+            val docs = db.collection("users").document(currentUid)
+                .collection("blocked").get().await()
+            docs.documents.map { it.id }
         } catch (e: Exception) {
+            Timber.e(e, "getBlockedUsers failed")
             emptyList()
         }
     }
 
-    // Automatically seed data to make the app work immediately out of the box
-    private fun seedDatabaseIfEmpty() {
+    // ═══════════════════════════════════════════════════════════════════════════
+    // DATABASE SEEDING — only runs once when collections are empty
+    // ═══════════════════════════════════════════════════════════════════════════
+    fun seedDatabaseIfEmpty() {
         // Seed News
         db.collection("news").limit(1).get().addOnSuccessListener { snapshot ->
             if (snapshot.isEmpty) {
                 val seedNews = listOf(
-                    NewsArticle("", "Outbreak", "Dawn News", "2h ago", "Dengue Cases Surge in Lahore's Urban Centers", "Health authorities report over 340 new cases in the past week across multiple districts.", "Lahore, Punjab", "CRITICAL"),
-                    NewsArticle("", "Disaster", "Geo News", "4h ago", "Flood Warning Issued for Southern Sindh", "Pakistan Meteorological Department warns of heavy rainfall and potential flooding.", "Hyderabad, Sindh", "WARNING"),
-                    NewsArticle("", "Research", "The News", "6h ago", "New Malaria Vaccine Trial Begins in Pakistan", "WHO-backed clinical trials commence at major hospitals in Islamabad and Rawalpindi.", "Islamabad", "INFO"),
-                    NewsArticle("", "Local", "Express Tribune", "8h ago", "Water Contamination Alert in Peshawar", "Multiple localities report contaminated water supply leading to gastroenteritis cases.", "Peshawar, KPK", "CRITICAL"),
-                    NewsArticle("", "Pharmacy", "ARY News", "12h ago", "Essential Medicine Prices Rise by 15% Nationwide", "Pharmaceutical companies cite raw material cost increase as primary factor.", "Karachi, Sindh", "INFO")
+                    NewsArticle("", "Dengue", "Dawn News", "2h ago", "Dengue Cases Surge in Punjab", "Health authorities report a 40% increase in dengue cases across Punjab province.", "Lahore, Punjab", "CRITICAL"),
+                    NewsArticle("", "COVID-19", "Geo News", "4h ago", "New COVID Variant Detected in Karachi", "Genomic sequencing confirms presence of new sub-variant in Sindh province.", "Karachi, Sindh", "WARNING"),
+                    NewsArticle("", "Flood", "ARY News", "6h ago", "Flood Warning Issued for Southern Sindh", "NDMA issues high alert for districts along the Indus River.", "Hyderabad, Sindh", "WARNING"),
+                    NewsArticle("", "Polio", "The News", "8h ago", "Polio Vaccination Drive Begins", "Government launches nationwide immunization campaign targeting children under 5.", "Islamabad", "INFO"),
+                    NewsArticle("", "Economy", "Express Tribune", "12h ago", "Medicine Prices Rise by 15% Nationwide", "Pharmaceutical companies cite raw material cost increase as primary factor.", "Karachi, Sindh", "INFO")
                 )
                 seedNews.forEach { db.collection("news").add(it) }
             }
         }
-
         // Seed Outbreaks
         db.collection("outbreaks").limit(1).get().addOnSuccessListener { snapshot ->
             if (snapshot.isEmpty) {
@@ -506,7 +531,6 @@ class FirebaseRepository {
                 seedOutbreaks.forEach { db.collection("outbreaks").add(it) }
             }
         }
-
         // Seed Alerts
         db.collection("alerts").limit(1).get().addOnSuccessListener { snapshot ->
             if (snapshot.isEmpty) {
@@ -520,7 +544,6 @@ class FirebaseRepository {
                 seedAlerts.forEach { db.collection("alerts").add(it) }
             }
         }
-
         // Seed Chats
         db.collection("chats").limit(1).get().addOnSuccessListener { snapshot ->
             if (snapshot.isEmpty) {
@@ -531,7 +554,6 @@ class FirebaseRepository {
                 )
                 seedChats.forEach { chat ->
                     db.collection("chats").document(chat.id).set(chat).addOnSuccessListener {
-                        // Seed default messages for dengue watch
                         if (chat.id == "dengue_lahore") {
                             val seedMessages = listOf(
                                 Message("", "system", "System", "Welcome to Dengue Watch group.", 1716120000000, true),
